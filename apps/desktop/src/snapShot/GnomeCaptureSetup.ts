@@ -1,5 +1,6 @@
 // @effect-diagnostics nodeBuiltinImport:off -- GNOME's per-user installation is a native adapter boundary.
 // @effect-diagnostics globalTimers:off -- Bound calls into the user's desktop session.
+import { PRODUCT_SLUG } from "@t3tools/shared/productIdentity";
 import * as NodeFSP from "node:fs/promises";
 import * as NodePath from "node:path";
 import { Message, sessionBus, type MessageBus, type MessageLike } from "dbus-next";
@@ -65,7 +66,7 @@ export async function installGnomeCaptureBundle({ bundle, dataHome }: SetupPaths
     }
     await NodeFSP.chmod(staged, 0o755);
     if (existing) {
-      const backupParent = NodePath.join(dataHome, "t3code", "extension-backups");
+      const backupParent = NodePath.join(dataHome, PRODUCT_SLUG, "extension-backups");
       await NodeFSP.mkdir(backupParent, { recursive: true });
       backup = NodePath.join(
         await NodeFSP.mkdtemp(NodePath.join(backupParent, "capture-")),

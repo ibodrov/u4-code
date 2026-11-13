@@ -42,7 +42,7 @@ export function managedPolicyPath(platform: NodeJS.Platform): string {
       // %ProgramFiles%, which a user can point somewhere they write.
       return "C:\\Program Files\\T3Code\\policy.json";
     default:
-      return "/etc/t3code/policy.json";
+      return "/etc/u4code/policy.json";
   }
 }
 

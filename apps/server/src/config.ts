@@ -1,3 +1,4 @@
+import { PRODUCT_DEFAULT_PORT } from "@t3tools/shared/productIdentity";
 import * as Context from "effect/Context";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
@@ -26,7 +27,7 @@ declare const __T3CODE_TELEMETRY_CHANNEL__: ReleaseChannel | undefined;
 export const telemetryChannel: ReleaseChannel =
   typeof __T3CODE_TELEMETRY_CHANNEL__ === "undefined" ? "dev" : __T3CODE_TELEMETRY_CHANNEL__;
 
-export const DEFAULT_PORT = 3773;
+export const DEFAULT_PORT = PRODUCT_DEFAULT_PORT;
 
 export const RuntimeMode = Schema.Literals(["web", "desktop"]);
 export type RuntimeMode = typeof RuntimeMode.Type;

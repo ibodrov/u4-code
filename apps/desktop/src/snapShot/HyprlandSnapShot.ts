@@ -1,4 +1,5 @@
 // @effect-diagnostics nodeBuiltinImport:off -- Bundled Wayland helper installed only by explicit setup.
+import { PRODUCT_SLUG } from "@t3tools/shared/productIdentity";
 import * as NodeChildProcess from "node:child_process";
 import * as NodeFSP from "node:fs/promises";
 import * as NodeOS from "node:os";
@@ -15,7 +16,12 @@ export { isHyprlandCaptureSession } from "./linuxCaptureSession.ts";
 export const HYPRLAND_CAPTURE_EXECUTABLE = "t3-hyprland-snap-shot";
 export type HyprlandCapturePaths = { readonly bundle: string; readonly dataHome: string };
 export function hyprlandCaptureExecutable(paths: HyprlandCapturePaths) {
-  return NodePath.join(paths.dataHome, "t3code", "hyprland-capture", HYPRLAND_CAPTURE_EXECUTABLE);
+  return NodePath.join(
+    paths.dataHome,
+    PRODUCT_SLUG,
+    "hyprland-capture",
+    HYPRLAND_CAPTURE_EXECUTABLE,
+  );
 }
 
 function hyprlandCaptureBinding(appId: string, lua: boolean): string {

@@ -1,3 +1,7 @@
+import {
+  PRODUCT_BOOT_SERVICE_LAUNCHD_LABEL,
+  PRODUCT_BOOT_SERVICE_NAME,
+} from "@t3tools/shared/productIdentity";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Config from "effect/Config";
 import * as Context from "effect/Context";
@@ -54,11 +58,11 @@ export {
   serviceUnitProgramOf as bootServiceProgramOf,
 } from "./serviceProtocol.ts";
 
-const BOOT_SERVICE_NAME = "t3code";
+const BOOT_SERVICE_NAME = PRODUCT_BOOT_SERVICE_NAME;
 export const BOOT_SERVICE_UNIT_FILE = `${BOOT_SERVICE_NAME}.service`;
 // `.service` suffix keeps the label distinct from the desktop app's bundle id
 // (com.t3tools.t3code), so launchd and TCC records never collide.
-export const BOOT_SERVICE_LAUNCHD_LABEL = "com.t3tools.t3code.service";
+export const BOOT_SERVICE_LAUNCHD_LABEL = PRODUCT_BOOT_SERVICE_LAUNCHD_LABEL;
 export const BOOT_SERVICE_PLIST_FILE = `${BOOT_SERVICE_LAUNCHD_LABEL}.plist`;
 export const BOOT_SERVICE_LOG_FILE = "boot-service.log";
 /** `schtasks /Query /HRESULT` exits with this when the task is not registered. */
@@ -111,7 +115,7 @@ export function renderBootServiceUnit(plan: BootServicePlan): string {
     "[Service]",
     "Type=simple",
     "WorkingDirectory=%h",
-    `Environment=T3CODE_HOME=${quoteSystemdValue(plan.baseDir)}`,
+    `Environment=U4CODE_HOME=${quoteSystemdValue(plan.baseDir)}`,
     ...(plan.installBinDir === undefined
       ? []
       : [`Environment=T3CODE_INSTALL_BIN_DIR=${quoteSystemdValue(plan.installBinDir)}`]),
@@ -171,7 +175,7 @@ export function renderBootServicePlist(
     `  <dict>`,
     `    <key>PATH</key>`,
     `    <string>${escapeXmlText(options.environmentPath)}</string>`,
-    `    <key>T3CODE_HOME</key>`,
+    `    <key>U4CODE_HOME</key>`,
     `    <string>${escapeXmlText(plan.baseDir)}</string>`,
     ...(plan.installBinDir === undefined
       ? []
@@ -1341,7 +1345,7 @@ export const make = Effect.fn("cloud.boot_service.make")(function* (input: {
                       // PowerShell has no inline variable assignment; the launcher takes a flag.
                       recoveryCommand: windows
                         ? `& ${launcher(installedVersion)} __service-launcher --base-dir ${quote(input.baseDir)}`
-                        : `T3CODE_HOME=${quote(input.baseDir)} ${launcher(installedVersion)} __service-launcher`,
+                        : `U4CODE_HOME=${quote(input.baseDir)} ${launcher(installedVersion)} __service-launcher`,
                     }
                   : {},
               );
