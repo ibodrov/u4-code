@@ -5,8 +5,8 @@ import {
   type ScopedProjectRef,
   type U4KubernetesWorkspace,
 } from "@t3tools/contracts";
-import { isLocalLoopbackHost } from "@t3tools/shared/hostClassification";
-import { useEnvironmentHttpBaseUrl } from "~/state/environments";
+import { canUseKubernetesBootstrap } from "./U4KubernetesWorkspaces.logic";
+import { useEnvironmentHttpBaseUrl, usePrimaryEnvironmentId } from "~/state/environments";
 import { useState } from "react";
 import { create } from "zustand";
 import { u4Kubernetes } from "~/state/u4Kubernetes";
@@ -223,11 +223,12 @@ function WorkspaceRow({
     setBusy(false);
   };
   const managerUrl = useEnvironmentHttpBaseUrl(environmentId);
-  const canBootstrap =
-    managerUrl !== null &&
-    isLocalLoopbackHost(new URL(managerUrl).hostname) &&
-    isLocalLoopbackHost(window.location.hostname) &&
-    window.location.protocol === "http:";
+  const primaryId = usePrimaryEnvironmentId();
+  const canBootstrap = canUseKubernetesBootstrap({
+    managerUrl,
+    pageUrl: window.location.href,
+    desktopManagedPrimary: window.desktopBridge !== undefined && primaryId === environmentId,
+  });
   const connectVia = async (transport: "tailnet" | "forward") => {
     setBusy(true);
     const result = await connect({ environmentId, input: { id: workspace.id, transport } });
@@ -236,6 +237,9 @@ function WorkspaceRow({
         host: result.value.route,
         pairingCode: result.value.pairingCode,
         expectedEnvironmentId: EnvironmentId.make(result.value.environmentId),
+        ...(result.value.forwardExpiresAt
+          ? { bootstrapExpiresAt: Date.parse(result.value.forwardExpiresAt) }
+          : {}),
       });
     setBusy(false);
   };

@@ -18,17 +18,22 @@ import * as ChildProcess from "effect/process/ChildProcess";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 import * as U4KubectlClient from "./U4KubectlClient.ts";
 import { workspaceLabels } from "./workspaceResources.ts";
+import { DESKTOP_RENDERER_ORIGINS } from "../httpCors.ts";
 
 export function isLocalBootstrapClient(client: {
   readonly ipAddress?: string | undefined;
   readonly origin?: string | undefined;
+  readonly subject?: string | undefined;
 }) {
   try {
     return (
       client.ipAddress !== undefined &&
       isLocalLoopbackHost(client.ipAddress) &&
       client.origin !== undefined &&
-      isLocalLoopbackHost(new URL(client.origin).hostname)
+      ((new URL(client.origin).protocol === "http:" &&
+        isLocalLoopbackHost(new URL(client.origin).hostname)) ||
+        (client.subject === "desktop-bootstrap" &&
+          DESKTOP_RENDERER_ORIGINS.some((origin) => origin === client.origin)))
     );
   } catch {
     return false;

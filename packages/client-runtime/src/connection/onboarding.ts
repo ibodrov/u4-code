@@ -1,6 +1,8 @@
 import type { DesktopSshEnvironmentTarget, EnvironmentId } from "@t3tools/contracts";
 import { resolveRemotePairingTarget } from "@t3tools/shared/remote";
 import * as Context from "effect/Context";
+import * as Clock from "effect/Clock";
+import { isLocalLoopbackHost } from "@t3tools/shared/hostClassification";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -39,6 +41,7 @@ export interface PairingConnectionInput {
   readonly host?: string;
   readonly pairingCode?: string;
   readonly expectedEnvironmentId?: EnvironmentId;
+  readonly bootstrapExpiresAt?: number;
 }
 
 export interface SshConnectionInput {
@@ -102,6 +105,17 @@ export const preparePairingRegistration = Effect.fn(
   "clientRuntime.connection.onboarding.preparePairingRegistration",
 )(function* (input: PairingConnectionInput) {
   const target = yield* resolvePairingTarget(input);
+  if (
+    input.bootstrapExpiresAt !== undefined &&
+    (!input.expectedEnvironmentId ||
+      !isLocalLoopbackHost(new URL(target.httpBaseUrl).hostname) ||
+      !Number.isFinite(input.bootstrapExpiresAt) ||
+      input.bootstrapExpiresAt <= (yield* Clock.currentTimeMillis))
+  )
+    return yield* new ConnectionBlockedError({
+      reason: "configuration",
+      detail: "The local bootstrap lease is invalid or expired.",
+    });
   const presentation = yield* ClientCapabilities.ClientPresentation;
   const descriptor = yield* fetchRemoteEnvironmentDescriptor({
     httpBaseUrl: target.httpBaseUrl,
@@ -126,6 +140,9 @@ export const preparePairingRegistration = Effect.fn(
       label: descriptor.label,
       httpBaseUrl: target.httpBaseUrl,
       wsBaseUrl: target.wsBaseUrl,
+      ...(input.bootstrapExpiresAt === undefined
+        ? {}
+        : { bootstrapExpiresAt: input.bootstrapExpiresAt }),
     }),
   };
   // The registry checks again under its lease; this early check keeps a refused code unspent.

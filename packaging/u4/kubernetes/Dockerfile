@@ -9,6 +9,8 @@ COPY --from=java /opt/java/openjdk /opt/java/openjdk
 ENV JAVA_HOME=/opt/java/openjdk PATH=/opt/java/openjdk/bin:/usr/local/bin:/usr/bin:/bin
 RUN mkdir -p /opt/u4 /workspace /cache /provider /state /build /run/u4-build && chown 1000:1000 /workspace /cache /provider /state /build /run/u4-build
 COPY build-worker.mjs build-snapshot.mjs workspace.mjs prepare-volume.mjs entrypoint.mjs /opt/u4/
+COPY build-supervisor.c /opt/u4/
+RUN cc -O2 -Wall -Wextra -Werror -o /opt/u4/build-supervisor /opt/u4/build-supervisor.c
 RUN printf '#!/bin/sh\nexec node /opt/u4/build-worker.mjs "$@"\n' > /usr/local/bin/u4-build && chmod 755 /usr/local/bin/u4-build
 USER 1000:1000
 WORKDIR /workspace

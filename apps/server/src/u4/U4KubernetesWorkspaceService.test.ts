@@ -66,7 +66,8 @@ function setup(snapshotInstalled = true) {
   };
   let online = true,
     nodeReady = true,
-    installed = 0;
+    installed = 0,
+    foreignService = false;
   let selector: Record<string, string> = {
     ...workspaceLabels(initial),
     "u4.ibodrov.ca/generation": "1",
@@ -107,7 +108,16 @@ function setup(snapshotInstalled = true) {
               workspaces.find((w) => w.serviceName === args[2] || w.pvcName === args[2]) ?? initial;
             return Effect.succeed(
               JSON.stringify({
-                metadata: { name: args[2], uid: "resource", labels: workspaceLabels(record) },
+                metadata: {
+                  name: args[2],
+                  uid: "resource",
+                  labels: {
+                    ...workspaceLabels(record),
+                    ...(args[1] === "service" && foreignService
+                      ? { "u4.ibodrov.ca/manager": "foreign" }
+                      : {}),
+                  },
+                },
                 spec: {
                   selector: record.id === initial.id ? selector : serviceSelectors.get(record.id),
                 },
@@ -238,6 +248,12 @@ function setup(snapshotInstalled = true) {
     removePod() {
       pod = null;
     },
+    set foreignService(value: boolean) {
+      foreignService = value;
+    },
+    removeService() {
+      deletedServices.add(initial.serviceName);
+    },
     replaceUid() {
       pod = { ...pod!, metadata: { ...pod!.metadata, uid: "foreign" } };
     },
@@ -289,7 +305,7 @@ it.effect(
       expect(fixture.mutations.filter((args) => args[0] === "delete")).toEqual([
         ["delete", "pod", initial.podName, "--wait=true", "--timeout=120s"],
         ["delete", "pod", "ws-test-2", "--wait=true", "--timeout=120s"],
-        ["delete", "service", initial.serviceName, "--wait=true"],
+        ["delete", "service", initial.serviceName, "--wait=true", "--ignore-not-found"],
       ]);
     }).pipe(Effect.provide(fixture.layer));
   },
@@ -381,6 +397,11 @@ it.effect(
       ).toBe("cluster");
       expect((yield* service.list).workspaces).toHaveLength(3);
       expect(f.mutations.filter((args) => args[0] === "create")).toHaveLength(6);
+      const count = f.mutations.length;
+      yield* Effect.flip(
+        service.launch({ profileId: profile.id, projectId: initial.projectId, name: "over-cap" }),
+      );
+      expect(f.mutations).toHaveLength(count);
     }).pipe(Effect.provide(f.layer));
   },
 );
@@ -428,3 +449,41 @@ it.effect("a slow workspace install does not block listing or another workspace'
     expect((yield* service.list).workspaces).toHaveLength(2);
   }).pipe(Effect.provide(f.layer));
 });
+
+it.effect(
+  "repairs an absent Service and archives an already absent Service without touching foreign resources",
+  () => {
+    const f = setup();
+    f.removeService();
+    return Effect.gen(function* () {
+      const service = yield* U4KubernetesWorkspaceService.U4KubernetesWorkspaceService;
+      expect((yield* service.lifecycle({ id: initial.id, action: "refresh" })).status).toBe(
+        "ready",
+      );
+      yield* service.lifecycle({ id: initial.id, action: "stop" });
+      f.removeService();
+      expect(
+        (yield* service.lifecycle({ id: initial.id, action: "forget" })).forgottenAt,
+      ).toBeDefined();
+      expect(
+        f.mutations.filter((args) => args[0] === "delete" && args[1] === "service"),
+      ).toHaveLength(0);
+      expect(
+        (yield* service.lifecycle({ id: initial.id, action: "forget" })).forgottenAt,
+      ).toBeDefined();
+      const foreign = setup();
+      foreign.foreignService = true;
+      yield* Effect.gen(function* () {
+        const other = yield* U4KubernetesWorkspaceService.U4KubernetesWorkspaceService;
+        expect(
+          (yield* Effect.flip(other.lifecycle({ id: initial.id, action: "refresh" }))).stage,
+        ).toBe("ownership");
+        foreign.removePod();
+        expect(
+          (yield* Effect.flip(other.lifecycle({ id: initial.id, action: "forget" }))).stage,
+        ).toBe("ownership");
+        expect(foreign.mutations).toEqual([]);
+      }).pipe(Effect.provide(foreign.layer));
+    }).pipe(Effect.provide(f.layer));
+  },
+);

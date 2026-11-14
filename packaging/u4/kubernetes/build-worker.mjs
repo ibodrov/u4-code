@@ -3,7 +3,7 @@ import * as NodeChildProcess from "node:child_process";
 import * as NodeFSP from "node:fs/promises";
 import * as NodePath from "node:path";
 import * as NodeStringDecoder from "node:string_decoder";
-import { prepareSnapshot } from "./build-snapshot.mjs";
+import { prepareSnapshot, PreparationError } from "./build-snapshot.mjs";
 import * as NodeURL from "node:url";
 
 const within = (root, path) => {
@@ -11,7 +11,14 @@ const within = (root, path) => {
   return rel === "" || (rel.split(NodePath.sep)[0] !== ".." && !NodePath.isAbsolute(rel));
 };
 
-export async function startWorker({ socketPath, workspaceRoot, buildRoot, home, cache }) {
+export async function startWorker({
+  socketPath,
+  workspaceRoot,
+  buildRoot,
+  home,
+  cache,
+  supervisorPath = "/opt/u4/build-supervisor",
+}) {
   const root = await NodeFSP.realpath(workspaceRoot);
   let active = null;
   const sockets = new Set();
@@ -35,14 +42,8 @@ export async function startWorker({ socketPath, workspaceRoot, buildRoot, home, 
       preparation.abort();
       if (!child || child.exitCode !== null || child.signalCode !== null) return;
       try {
-        process.kill(-child.pid, "SIGTERM");
+        child.kill("SIGTERM");
       } catch {}
-      killTimer = setTimeout(() => {
-        try {
-          process.kill(-child.pid, "SIGKILL");
-        } catch {}
-      }, 2000);
-      killTimer.unref();
     };
     socket.on("close", () => {
       sockets.delete(socket);
@@ -86,14 +87,18 @@ export async function startWorker({ socketPath, workspaceRoot, buildRoot, home, 
             typeof request.cwd !== "string"
           )
             throw new Error("invalid command");
-          const sourceCwd = await NodeFSP.realpath(NodePath.resolve(request.cwd));
+          const sourceCwd = await NodeFSP.realpath(NodePath.resolve(request.cwd)).catch((error) => {
+            throw new PreparationError(
+              error.code === "ENOENT" ? "missing-worktree" : "source-unreadable",
+            );
+          });
           if (!within(root, sourceCwd)) throw new Error("cwd outside workspace");
           const cwd = await prepareSnapshot(root, sourceCwd, buildRoot, preparation.signal);
           if (socket.destroyed || cancelled) {
             if (active === socket) active = null;
             return;
           }
-          child = NodeChildProcess.spawn(request.argv[0], request.argv.slice(1), {
+          child = NodeChildProcess.spawn(supervisorPath, request.argv, {
             cwd,
             detached: true,
             stdio: ["ignore", "pipe", "pipe"],
@@ -130,20 +135,26 @@ export async function startWorker({ socketPath, workspaceRoot, buildRoot, home, 
             send({ type: "error", reason: "spawn" });
           });
           child.on("exit", () => {
-            clearTimeout(killTimer);
-            // Descendants must not retain the build slot after their command exits.
-            try {
-              process.kill(-child.pid, "SIGKILL");
-            } catch {}
+            // The subreaper has finished owned descendants; bound draining a slow client's pipes.
+            killTimer = setTimeout(() => {
+              child.stdout.destroy();
+              child.stderr.destroy();
+            }, 250);
+            killTimer.unref();
           });
           child.on("close", (code, signal) => {
+            clearTimeout(killTimer);
             if (active === socket) active = null;
+            if (code === 125 && !spawnFailed) send({ type: "error", reason: "supervision" });
             send({ type: "exit", code: spawnFailed ? 125 : code, signal });
             socket.end();
           });
-        } catch {
+        } catch (error) {
           if (active === socket && !child) active = null;
-          send({ type: "error", reason: "invalid" });
+          send({
+            type: "error",
+            reason: error instanceof PreparationError ? error.reason : "invalid",
+          });
           socket.end();
         }
       }

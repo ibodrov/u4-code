@@ -8,7 +8,18 @@ import * as NodeUtil from "node:util";
 import * as NodeChildProcess from "node:child_process";
 import { startWorker } from "./build-worker.mjs";
 
-const io = vi.hoisted(() => ({ gate: null }));
+const io = vi.hoisted(() => ({ gate: null, spawned: null }));
+vi.mock("node:child_process", async (importOriginal) => {
+  const original = await importOriginal();
+  return {
+    ...original,
+    spawn: (...args) => {
+      const child = original.spawn(...args);
+      io.spawned?.(child);
+      return child;
+    },
+  };
+});
 vi.mock("node:fs/promises", async (importOriginal) => {
   const original = await importOriginal();
   return {
@@ -37,6 +48,7 @@ async function fixture() {
     NodeUtil.promisify(NodeChildProcess.execFile)("git", args, { cwd: workspace });
   await git("init", "-b", "main");
   await NodeFSP.writeFile(NodePath.join(workspace, "source.txt"), "original\n");
+  await NodeFSP.writeFile(NodePath.join(workspace, ".gitignore"), "target/\n");
   await git("add", ".");
   await git(
     "-c",
@@ -47,20 +59,39 @@ async function fixture() {
     "-m",
     "fixture",
   );
+  const supervisorPath = NodePath.join(directory, "supervisor");
+  await NodeUtil.promisify(NodeChildProcess.execFile)("cc", [
+    "-O2",
+    "-Wall",
+    "-Wextra",
+    "-Werror",
+    "-o",
+    supervisorPath,
+    NodePath.join(import.meta.dirname, "build-supervisor.c"),
+  ]);
   const worker = await startWorker({
     socketPath,
     workspaceRoot: workspace,
     buildRoot,
     home,
     cache,
+    supervisorPath,
   });
+  let closed = false;
+  const close = async () => {
+    if (!closed) {
+      closed = true;
+      await worker.close();
+    }
+  };
   return {
     workspace,
     buildRoot,
     home,
     socketPath,
+    close,
     async [Symbol.asyncDispose]() {
-      await worker.close();
+      await close();
       await NodeFSP.rm(directory, { recursive: true, force: true });
     },
   };
@@ -157,7 +188,7 @@ it("rejects concurrent builds, cancels the owned process, and rejects paths outs
   NodeAssert.equal(next.at(-1).code, 0);
   const missing = await command(f.socketPath, f.workspace, ["u4-no-such-build-command"]).done;
   NodeAssert.equal(missing.at(-1).code, 125);
-  NodeAssert.ok(missing.some((e) => e.type === "error" && e.reason === "spawn"));
+  NodeAssert.ok(missing.some((e) => e.type === "error" && e.reason === "supervision"));
 });
 
 it("keeps its reservation when a second run line arrives during filesystem preparation", async () => {
@@ -211,13 +242,41 @@ it("builds a private copy, preserves outputs until source changes, and leaves so
   const read = await command(f.socketPath, f.workspace, [
     process.execPath,
     "-e",
-    'process.stdout.write(require("fs").readFileSync("generated.txt"));',
+    'process.stdout.write(require("fs").readFileSync("source.txt"));',
   ]).done;
   NodeAssert.ok(
     read.some(
-      (e) => e.type === "stdout" && Buffer.from(e.data, "base64").toString() === "build output",
+      (e) => e.type === "stdout" && Buffer.from(e.data, "base64").toString() === "original\n",
     ),
   );
+  await NodeFSP.writeFile(NodePath.join(f.workspace, "untracked.txt"), "real untracked");
+  await NodeFSP.symlink("source.txt", NodePath.join(f.workspace, "source-link"));
+  for (const mutation of [
+    'fs.unlinkSync("source.txt")',
+    'fs.unlinkSync("source.txt");fs.symlinkSync("untracked.txt","source.txt")',
+    'fs.unlinkSync("source.txt");fs.mkdirSync("source.txt")',
+    'fs.writeFileSync("untracked.txt","forged");fs.unlinkSync("source-link");fs.writeFileSync("source-link","fake link")',
+  ]) {
+    const edit = await command(f.socketPath, f.workspace, [
+      process.execPath,
+      "-e",
+      `const fs=require('fs');${mutation};fs.mkdirSync('target',{recursive:true});fs.writeFileSync('target/output','preserve ignored');fs.writeFileSync('../'+require('path').basename(process.cwd())+'.json','forged manifest')`,
+    ]).done;
+    NodeAssert.equal(edit.at(-1).code, 0);
+    const checked = await command(f.socketPath, f.workspace, [
+      process.execPath,
+      "-e",
+      `const f=require('fs');require('assert').equal(f.readFileSync('source.txt','utf8'),'original\\n');require('assert').equal(f.readFileSync('untracked.txt','utf8'),'real untracked');require('assert').equal(f.readlinkSync('source-link'),'source.txt');require('assert').equal(f.readFileSync('target/output','utf8'),'preserve ignored');`,
+    ]).done;
+    NodeAssert.equal(checked.at(-1).code, 0);
+  }
+  await NodeFSP.rm(NodePath.join(f.workspace, "untracked.txt"));
+  const deleted = await command(f.socketPath, f.workspace, [
+    process.execPath,
+    "-e",
+    "require('assert').equal(require('fs').existsSync('untracked.txt'),false)",
+  ]).done;
+  NodeAssert.equal(deleted.at(-1).code, 0);
   await NodeFSP.writeFile(source, "updated source\n");
   const changed = await command(f.socketPath, f.workspace, [
     process.execPath,
@@ -250,4 +309,84 @@ it("builds a private copy, preserves outputs until source changes, and leaves so
     copied.some((e) => e.type === "stdout" && Buffer.from(e.data, "base64").toString() === "true"),
   );
   NodeAssert.equal(await NodeFSP.readFile(NodePath.join(future, ".git"), "utf8"), pointer);
+});
+
+it("reaps owned detached descendants before freeing its slot, including cancellation and shutdown", async () => {
+  await using f = await fixture();
+  const exited = Promise.withResolvers();
+  const pids = [];
+  io.spawned = (child) => child.once("exit", () => exited.resolve());
+  const descendant =
+    'console.log(JSON.stringify({descendant:process.pid}));process.send("ready");setInterval(()=>{},1000)';
+  const script = `const c=require('child_process').spawn(process.execPath,['-e',${JSON.stringify(descendant)}],{detached:true,stdio:['ignore','inherit','inherit','ipc']});c.once('message',()=>process.exit(7))`;
+  const first = command(f.socketPath, f.workspace, [process.execPath, "-e", script], (event) => {
+    if (event.type === "stdout")
+      pids.push(JSON.parse(Buffer.from(event.data, "base64").toString()).descendant);
+  });
+  try {
+    await exited.promise;
+    for (const pid of pids) NodeAssert.throws(() => process.kill(pid, 0), { code: "ESRCH" });
+    NodeAssert.equal((await first.done).at(-1).code, 7);
+    const next = await command(f.socketPath, f.workspace, [
+      process.execPath,
+      "-e",
+      "process.exit(0)",
+    ]).done;
+    NodeAssert.equal(next.at(-1).code, 0);
+    io.spawned = null;
+    for (const mode of ["cancel", "shutdown"]) {
+      const ready = Promise.withResolvers();
+      const held = command(
+        f.socketPath,
+        f.workspace,
+        [process.execPath, "-e", script.replace("process.exit(7)", "setInterval(()=>{},1000)")],
+        (event) => {
+          if (event.type === "stdout") {
+            pids.push(JSON.parse(Buffer.from(event.data, "base64").toString()).descendant);
+            ready.resolve();
+          }
+        },
+      );
+      await ready.promise;
+      if (mode === "cancel") held.socket.write('{"type":"cancel"}\n');
+      else await f.close();
+      await held.done;
+      for (const pid of pids) NodeAssert.throws(() => process.kill(pid, 0), { code: "ESRCH" });
+      if (mode === "cancel")
+        NodeAssert.equal(
+          (
+            await command(f.socketPath, f.workspace, [process.execPath, "-e", "process.exit(0)"])
+              .done
+          ).at(-1).code,
+          0,
+        );
+    }
+  } finally {
+    io.spawned = null;
+    // These PIDs came from this fixture's child, including on the failing implementation.
+    for (const pid of pids) {
+      try {
+        process.kill(pid, "SIGKILL");
+      } catch {}
+    }
+    await first.done;
+  }
+});
+
+it("reports bounded preparation stages without source contents", async () => {
+  await using f = await fixture();
+  const missing = await command(f.socketPath, NodePath.join(f.workspace, "missing"), ["true"]).done;
+  NodeAssert.deepEqual(missing, [{ type: "error", reason: "missing-worktree" }]);
+  const huge = NodePath.join(f.workspace, "oversized");
+  const handle = await NodeFSP.open(huge, "w");
+  await handle.truncate(512 * 1024 * 1024 + 1);
+  await handle.close();
+  const capped = await command(f.socketPath, f.workspace, ["true"]).done;
+  NodeAssert.deepEqual(capped, [{ type: "error", reason: "snapshot-limit" }]);
+  await NodeFSP.rm(huge);
+  await NodeUtil.promisify(NodeChildProcess.execFile)("mkfifo", [
+    NodePath.join(f.workspace, "unsupported"),
+  ]);
+  const unsupported = await command(f.socketPath, f.workspace, ["true"]).done;
+  NodeAssert.deepEqual(unsupported, [{ type: "error", reason: "unsupported-entry" }]);
 });

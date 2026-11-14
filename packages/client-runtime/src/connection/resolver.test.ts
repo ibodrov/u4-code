@@ -14,6 +14,7 @@ import * as ClientCapabilities from "../platform/capabilities.ts";
 import * as RemoteEnvironmentAuthorization from "../authorization/service.ts";
 import {
   BearerConnectionCredential,
+  BearerConnectionProfile,
   type ConnectionCatalogEntry,
   SshConnectionProfile,
   type ConnectionCredential,
@@ -22,6 +23,7 @@ import {
 import * as ConnectionCredentialStore from "./credentialStore.ts";
 import {
   ConnectionTransientError,
+  BearerConnectionTarget,
   PrimaryConnectionTarget,
   SshConnectionTarget,
   type ConnectionTarget,
@@ -169,6 +171,41 @@ const makeDependencies = Effect.fn("TestConnectionResolver.makeDependencies")((o
 });
 
 describe("ConnectionResolver", () => {
+  it.effect(
+    "retires expired Kubernetes bootstrap routes before reading credentials or authorizing a reused port",
+    () =>
+      Effect.gen(function* () {
+        const target = new BearerConnectionTarget({
+          environmentId: ENVIRONMENT_ID,
+          label: "Bootstrap",
+          connectionId: "bootstrap",
+        });
+        const profile = new BearerConnectionProfile({
+          connectionId: "bootstrap",
+          environmentId: ENVIRONMENT_ID,
+          label: "Bootstrap",
+          httpBaseUrl: "http://127.0.0.1:4000",
+          wsBaseUrl: "ws://127.0.0.1:4000",
+          bootstrapExpiresAt: 0,
+        });
+        let authorized = false;
+        const layer = yield* makeDependencies({
+          credentials: [["bootstrap", new BearerConnectionCredential({ token: "fixture-token" })]],
+          authorizeBearer: () => {
+            authorized = true;
+            return Effect.die("must not authorize an expired route");
+          },
+        });
+        yield* Effect.gen(function* () {
+          const resolver = yield* ConnectionResolver.ConnectionResolver;
+          const error = yield* Effect.flip(
+            resolver.prepare(catalogEntry(target, Option.some(profile))),
+          );
+          expect(error).toMatchObject({ reason: "configuration" });
+          expect(authorized).toBe(false);
+        }).pipe(Effect.provide(layer));
+      }),
+  );
   it.effect("blocks an old host during discovery before opening orchestration RPC", () =>
     Effect.gen(function* () {
       const layerBroker = yield* makeDependencies({ descriptorProtocolVersion: null });
@@ -183,7 +220,7 @@ describe("ConnectionResolver", () => {
       const error = yield* Effect.flip(broker.prepare(catalogEntry(target)));
 
       expect(error).toMatchObject({ reason: "unsupported" });
-      expect(error.message).toContain("Update T3 Code on Compatible environment");
+      expect(error.message).toContain("Update U4 Code on Compatible environment");
     }),
   );
 

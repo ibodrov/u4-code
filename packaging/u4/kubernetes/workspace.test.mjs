@@ -102,6 +102,45 @@ it("migrates only old caches once, preserves executable tools and keeps migratio
     prepareVolume(root, "2");
     expect((await NodeFSP.stat(NodePath.join(root, "cache/mvn"))).mode & 0o777).toBe(0o600);
     expect(await NodeFSP.readFile(NodePath.join(root, "state/generation"), "utf8")).toBe("2");
+    for (const initialized of [false, true])
+      for (const kind of ["file", "dangling", "directory-link", "file-link"]) {
+        const volume = NodePath.join(root, `${initialized}-${kind}`);
+        await NodeFSP.mkdir(NodePath.join(volume, "cache"), { recursive: true });
+        await NodeFSP.writeFile(NodePath.join(volume, "cache/mvn"), "old-cache", { mode: 0o755 });
+        if (initialized) {
+          prepareVolume(volume, "1");
+          await NodeFSP.chmod(NodePath.join(volume, "cache/mvn"), 0o600);
+          await NodeFSP.rm(NodePath.join(volume, "cache/home"), { recursive: true });
+        }
+        const home = NodePath.join(volume, "cache/home");
+        const target = NodePath.join(root, `unrelated-${initialized}-${kind}`);
+        if (kind === "directory-link") await NodeFSP.mkdir(target);
+        if (kind === "file-link")
+          await NodeFSP.writeFile(target, "preserve target", { mode: 0o600 });
+        if (kind === "file") await NodeFSP.writeFile(home, "preserve entry");
+        else await NodeFSP.symlink(target, home);
+        prepareVolume(volume, "3");
+        expect((await NodeFSP.lstat(home)).isDirectory()).toBe(true);
+        expect((await NodeFSP.lstat(home)).isSymbolicLink()).toBe(false);
+        const quarantined = (await NodeFSP.readdir(NodePath.join(volume, "cache"))).filter((x) =>
+          x.startsWith("home-quarantine-"),
+        );
+        expect(quarantined).toHaveLength(1);
+        const entry = NodePath.join(volume, "cache", quarantined[0]);
+        if (kind === "file") expect(await NodeFSP.readFile(entry, "utf8")).toBe("preserve entry");
+        else expect(await NodeFSP.readlink(entry)).toBe(target);
+        if (kind === "file-link") {
+          expect(await NodeFSP.readFile(target, "utf8")).toBe("preserve target");
+          expect((await NodeFSP.stat(target)).mode & 0o777).toBe(0o600);
+        }
+        expect(
+          await NodeFSP.readFile(NodePath.join(volume, "state/build-permissions-v2"), "utf8"),
+        ).toBe("2");
+        const mode = (await NodeFSP.stat(NodePath.join(volume, "cache/mvn"))).mode & 0o777;
+        expect(mode).toBe(initialized ? 0o600 : 0o770);
+        prepareVolume(volume, "4");
+        expect((await NodeFSP.stat(NodePath.join(volume, "cache/mvn"))).mode & 0o777).toBe(mode);
+      }
   } finally {
     await NodeFSP.rm(root, { recursive: true, force: true });
   }

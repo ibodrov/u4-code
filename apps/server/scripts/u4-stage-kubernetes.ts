@@ -102,6 +102,7 @@ const program = Effect.gen(function* () {
     "Dockerfile",
     "build-worker.mjs",
     "build-snapshot.mjs",
+    "build-supervisor.c",
     "prepare-volume.mjs",
     "workspace.mjs",
     "entrypoint.mjs",

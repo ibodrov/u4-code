@@ -3602,6 +3602,7 @@ export const layer = Layer.unwrap(
               localKubernetesBootstrap: isLocalBootstrapClient({
                 ipAddress: deriveAuthClientMetadata({ request }).ipAddress,
                 origin: request.headers.origin,
+                subject: session.subject,
               }),
             }).pipe(
               Layer.provideMerge(RpcSerialization.layerJson),

@@ -130,6 +130,45 @@ export const make = Effect.gen(function* () {
     )
       return yield* new U4WorkspaceError({ stage: "ownership" });
   });
+  const readService = Effect.fn("U4KubernetesWorkspaceService.readService")(function* (
+    profile: U4ClusterProfile,
+    workspace: U4KubernetesWorkspace,
+  ) {
+    const text = yield* kubectl.run(profile, [
+      "get",
+      "service",
+      workspace.serviceName,
+      "--ignore-not-found",
+      "-o",
+      "json",
+    ]);
+    if (!text.trim()) return undefined;
+    const service = yield* U4KubectlClient.decodeJson(U4KubectlClient.Service, text);
+    if (
+      Object.entries(workspaceLabels(workspace)).some(
+        ([k, v]) => service.metadata.labels?.[k] !== v,
+      )
+    )
+      return yield* new U4WorkspaceError({ stage: "ownership" });
+    return service;
+  });
+  const checkCapacity = Effect.fn("U4KubernetesWorkspaceService.checkCapacity")(function* (
+    profile: U4ClusterProfile,
+  ) {
+    const all = yield* U4KubectlClient.decodeJson(
+      U4KubectlClient.PodList,
+      yield* kubectl.run(profile, [
+        "get",
+        "pods",
+        "-l",
+        "app.kubernetes.io/part-of=u4-code",
+        "-o",
+        "json",
+      ]),
+    );
+    if (all.items.length >= profile.maxWorkspaces)
+      return yield* new U4WorkspaceError({ stage: "cluster" });
+  });
   const reconcile = Effect.fn("U4KubernetesWorkspaceService.reconcile")(function* (
     profile: U4ClusterProfile,
     workspace: U4KubernetesWorkspace,
@@ -145,16 +184,17 @@ export const make = Effect.gen(function* () {
       });
     const server = pod.status.containerStatuses?.find((c) => c.name === "server");
     const builder = pod.status.containerStatuses?.find((c) => c.name === "builder");
-    const service = yield* U4KubectlClient.decodeJson(
-      U4KubectlClient.Service,
-      yield* kubectl.run(profile, ["get", "service", workspace.serviceName, "-o", "json"]),
-    );
-    if (
-      Object.entries(workspaceLabels(workspace)).some(
-        ([key, value]) => service.metadata.labels?.[key] !== value,
-      )
-    )
-      return yield* new U4WorkspaceError({ stage: "ownership" });
+    let service = yield* readService(profile, workspace);
+    if (!service) {
+      yield* assertResource(profile, workspace, "pvc", workspace.pvcName);
+      yield* kubectl.run(
+        profile,
+        ["create", "-f", "-"],
+        yield* U4KubectlClient.encodeJson(workspaceResources(profile, workspace).service),
+      );
+      service = yield* readService(profile, workspace);
+      if (!service) return yield* new U4WorkspaceError({ stage: "cluster" });
+    }
     const expectedSelector = workspaceResources(profile, workspace).service.spec.selector;
     if (
       Object.keys(service.spec?.selector ?? {}).length !== Object.keys(expectedSelector).length ||
@@ -216,19 +256,7 @@ export const make = Effect.gen(function* () {
   ) {
     const resources = workspaceResources(profile, workspace);
     yield* Effect.gen(function* () {
-      const all = yield* U4KubectlClient.decodeJson(
-        U4KubectlClient.PodList,
-        yield* kubectl.run(profile, [
-          "get",
-          "pods",
-          "-l",
-          "app.kubernetes.io/part-of=u4-code",
-          "-o",
-          "json",
-        ]),
-      );
-      if (all.items.length >= profile.maxWorkspaces)
-        return yield* new U4WorkspaceError({ stage: "cluster" });
+      yield* checkCapacity(profile);
       yield* save(workspace);
       yield* kubectl.run(
         profile,
@@ -250,6 +278,7 @@ export const make = Effect.gen(function* () {
   const launch = Effect.fn("U4KubernetesWorkspaceService.launch")(
     function* (input: U4WorkspaceLaunchRequest) {
       const profile = yield* profileFor(input.profileId);
+      yield* checkCapacity(profile);
       const ledger = yield* repository.read;
       if (ledger.workspaces.some((w) => w.profileId === profile.id && w.name === input.name))
         return yield* new U4WorkspaceError({ stage: "ownership" });
@@ -321,7 +350,10 @@ export const make = Effect.gen(function* () {
         const { forgottenAt: _, ...restored } = workspace;
         return yield* save({ ...restored, status: "stopped", route: null });
       }
-      if (workspace.forgottenAt) return yield* new U4WorkspaceError({ stage: "ownership" });
+      if (workspace.forgottenAt) {
+        if (input.action === "forget" || input.action === "refresh") return workspace;
+        return yield* new U4WorkspaceError({ stage: "ownership" });
+      }
       if (input.action === "refresh" || input.action === "reattach")
         return yield* Effect.gen(function* () {
           const current = yield* reconcile(profile, workspace);
@@ -342,8 +374,14 @@ export const make = Effect.gen(function* () {
       yield* connections.stop(workspace.id);
       if (input.action === "forget") {
         if (found.length) return yield* new U4WorkspaceError({ stage: "replacement" });
-        yield* assertResource(profile, workspace, "service", workspace.serviceName);
-        yield* kubectl.run(profile, ["delete", "service", workspace.serviceName, "--wait=true"]);
+        if (yield* readService(profile, workspace))
+          yield* kubectl.run(profile, [
+            "delete",
+            "service",
+            workspace.serviceName,
+            "--wait=true",
+            "--ignore-not-found",
+          ]);
         return yield* save({
           ...workspace,
           forgottenAt: DateTime.formatIso(yield* DateTime.now),

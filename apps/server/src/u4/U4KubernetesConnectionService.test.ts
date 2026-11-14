@@ -12,6 +12,7 @@ import type { U4ClusterProfile, U4KubernetesWorkspace } from "@t3tools/contracts
 import * as Connections from "./U4KubernetesConnectionService.ts";
 import * as Kubectl from "./U4KubectlClient.ts";
 import { workspaceLabels } from "./workspaceResources.ts";
+import { DESKTOP_RENDERER_ORIGINS } from "../httpCors.ts";
 const profile = { context: "owned-context", namespace: "owned-namespace" } as U4ClusterProfile;
 const workspace = {
   id: "ws-test",
@@ -105,6 +106,21 @@ it.effect(
           origin: "http://localhost:8544",
         }),
       ).toBe(true);
+      for (const origin of DESKTOP_RENDERER_ORIGINS) {
+        expect(
+          Connections.isLocalBootstrapClient({
+            ipAddress: "127.0.0.1",
+            origin,
+            subject: "desktop-bootstrap",
+          }),
+        ).toBe(true);
+        for (const client of [
+          { ipAddress: "100.1.1.1", origin, subject: "desktop-bootstrap" },
+          { ipAddress: "127.0.0.1", origin, subject: "one-time-token" },
+          { ipAddress: "127.0.0.1", origin: `${origin}.evil`, subject: "desktop-bootstrap" },
+        ])
+          expect(Connections.isLocalBootstrapClient(client)).toBe(false);
+      }
       const f = yield* fixture();
       yield* Effect.gen(function* () {
         const c = yield* Connections.U4KubernetesConnectionService;

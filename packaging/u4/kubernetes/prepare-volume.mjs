@@ -1,5 +1,6 @@
 import * as NodeFS from "node:fs";
 import * as NodeURL from "node:url";
+import * as NodeCrypto from "node:crypto";
 export function prepareVolume(root, generation) {
   if (!/^[1-9][0-9]*$/.test(generation ?? "")) throw new Error("invalid generation");
   for (const name of ["workspace", "cache", "build", "state", "provider"]) {
@@ -24,7 +25,11 @@ export function prepareVolume(root, generation) {
     NodeFS.writeFileSync(marker, "2", { mode: 0o600 });
   }
   NodeFS.chmodSync(`${root}/build`, 0o2770);
-  NodeFS.mkdirSync(`${root}/cache/home`, { recursive: true, mode: 0o2770 });
+  const home = `${root}/cache/home`;
+  const current = NodeFS.lstatSync(home, { throwIfNoEntry: false });
+  if (current && (!current.isDirectory() || current.isSymbolicLink()))
+    NodeFS.renameSync(home, `${root}/cache/home-quarantine-${NodeCrypto.randomUUID()}`);
+  NodeFS.mkdirSync(home, { recursive: true, mode: 0o2770 });
   NodeFS.writeFileSync(`${root}/state/generation`, generation, { mode: 0o600 });
 }
 if (process.argv[1] && import.meta.url === NodeURL.pathToFileURL(process.argv[1]).href)
