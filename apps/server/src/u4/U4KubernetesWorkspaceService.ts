@@ -291,7 +291,7 @@ export const make = Effect.gen(function* () {
       yield* checkCapacity(profile);
       const ledger = yield* repository.read;
       if (ledger.workspaces.some((w) => w.profileId === profile.id && w.name === input.name))
-        return yield* new U4WorkspaceError({ stage: "ownership" });
+        return yield* new U4WorkspaceError({ stage: "name" });
       const id = `ws-${(yield* random.uuidV4()).slice(0, 8)}`;
       const snapshot = yield* transfer.snapshot(input.projectId, id);
       const workspace: U4KubernetesWorkspace = {

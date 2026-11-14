@@ -33,7 +33,8 @@ export function createU4KubernetesAtoms<R, E>(
     launch: createEnvironmentRpcCommand(runtime, {
       label: "u4:workspaces:launch",
       tag: WS_METHODS.u4WorkspaceLaunch,
-      onSuccess: ({ environmentId }, registry) =>
+      // A failed launch can still leave a saved record, so the list refreshes either way.
+      onSettled: ({ environmentId }, registry) =>
         Effect.sync(() => registry.refresh(list({ environmentId, input: {} }))),
     }),
     lifecycle: createEnvironmentRpcCommand<

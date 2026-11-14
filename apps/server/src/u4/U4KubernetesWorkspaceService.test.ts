@@ -305,6 +305,15 @@ it.effect(
       yield* service.lifecycle({ id: initial.id, action: "stop" });
       const archived = yield* service.lifecycle({ id: initial.id, action: "forget" });
       expect(archived.forgottenAt).toBeDefined();
+      expect(
+        (yield* Effect.flip(
+          service.launch({
+            profileId: profile.id,
+            projectId: initial.projectId,
+            name: initial.name,
+          }),
+        )).stage,
+      ).toBe("name");
       expect((yield* service.list).workspaces).toHaveLength(1);
       const restored = yield* service.lifecycle({ id: initial.id, action: "restore" });
       expect(restored.forgottenAt).toBeUndefined();

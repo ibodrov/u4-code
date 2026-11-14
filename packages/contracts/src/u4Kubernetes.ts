@@ -1,7 +1,8 @@
 import * as Schema from "effect/Schema";
 import { ProjectId, TrimmedNonEmptyString } from "./baseSchemas.ts";
 
-const ResourceName = Schema.String.check(Schema.isPattern(/^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/));
+export const U4_RESOURCE_NAME_PATTERN = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/;
+const ResourceName = Schema.String.check(Schema.isPattern(U4_RESOURCE_NAME_PATTERN));
 const DigestImage = Schema.String.check(
   Schema.isPattern(/^registry\.ibodrov\.ca\/homelab\/u4-[a-z0-9-]+@sha256:[a-f0-9]{64}$/),
 );
@@ -105,6 +106,7 @@ export type U4WorkspaceList = typeof U4WorkspaceList.Type;
 export class U4WorkspaceError extends Schema.TaggedError<U4WorkspaceError>()("U4WorkspaceError", {
   stage: Schema.Literals([
     "configuration",
+    "name",
     "ownership",
     "snapshot",
     "cluster",
@@ -119,6 +121,8 @@ export class U4WorkspaceError extends Schema.TaggedError<U4WorkspaceError>()("U4
     switch (this.stage) {
       case "configuration":
         return "Configure a valid Kubernetes profile on the managing environment.";
+      case "name":
+        return "A workspace with this name already exists on the selected cluster, possibly archived. Choose another name. Nothing was created.";
       case "ownership":
         return "Workspace ownership or instance identity does not match. No resource was changed.";
       case "snapshot":
