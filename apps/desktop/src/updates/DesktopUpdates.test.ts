@@ -1,6 +1,7 @@
 import * as NodeModule from "node:module";
 
 import { assert, describe, it } from "@effect/vitest";
+import { vi } from "vite-plus/test";
 import { DESKTOP_UPDATE_RESTART_MARKER_FILE } from "@t3tools/contracts";
 import { computeReleaseNotes } from "electron-updater/out/providers/GitHubProvider.js";
 import * as Cause from "effect/Cause";
@@ -24,6 +25,33 @@ import * as DesktopState from "../app/DesktopState.ts";
 import * as DesktopUpdatePolicy from "./DesktopUpdatePolicy.ts";
 import * as DesktopUpdates from "./DesktopUpdates.ts";
 import { flushCallbacks, makeHarness } from "./updatesTestHarness.ts";
+
+// U4 disables updates in production; upstream updater tests need a configurable mock.
+vi.mock(import("../app/DesktopConfig.ts"), async (original) => {
+  const actual = await original();
+  const Config = await import("effect/Config");
+  return {
+    ...actual,
+    DesktopConfig: Config.all({
+      config: actual.DesktopConfig,
+      disableAutoUpdate: Config.Boolean("T3CODE_DISABLE_AUTO_UPDATE").pipe(
+        Config.withDefault(false),
+      ),
+    }).pipe(Config.map(({ config, disableAutoUpdate }) => ({ ...config, disableAutoUpdate }))),
+  };
+});
+
+it.effect("keeps U4 updates disabled regardless of the inherited environment", () =>
+  Effect.gen(function* () {
+    const actual = yield* Effect.promise(() =>
+      vi.importActual<typeof import("../app/DesktopConfig.ts")>("../app/DesktopConfig.ts"),
+    );
+    const config = yield* actual.DesktopConfig.pipe(
+      Effect.provide(actual.layerTest({ T3CODE_DISABLE_AUTO_UPDATE: "false" })),
+    );
+    assert.isTrue(config.disableAutoUpdate);
+  }),
+);
 
 type ReleaseFeed = Parameters<typeof computeReleaseNotes>[2];
 type RunningVersion = Parameters<typeof computeReleaseNotes>[0];

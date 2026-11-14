@@ -9,6 +9,7 @@ import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/sql/SqlClient";
 
 import * as HostProcess from "@t3tools/shared/HostProcess";
+import { PRODUCT_BASE_NAME } from "@t3tools/shared/productIdentity";
 
 import * as OrchestrationEventStore from "../persistence/OrchestrationEventStore.ts";
 import { forkParked } from "../serverActivation.ts";
@@ -30,7 +31,7 @@ function inhibitorCommand(
         command: "systemd-inhibit",
         args: [
           "--what=idle:sleep",
-          "--who=T3 Code",
+          `--who=${PRODUCT_BASE_NAME}`,
           "--why=Agents are working",
           "--mode=block",
           "tail",

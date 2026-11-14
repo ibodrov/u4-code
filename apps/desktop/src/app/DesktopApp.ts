@@ -146,7 +146,7 @@ const handleFatalStartupError = Effect.fn("desktop.startup.handleFatalStartupErr
   const wasQuitting = yield* Ref.getAndSet(state.quitting, true);
   if (!wasQuitting) {
     yield* electronDialog.showErrorBox(
-      "T3 Code failed to start",
+      "U4 Code failed to start",
       `Stage: ${stage}\n${message}${detail}`,
     );
   }
@@ -235,7 +235,7 @@ const bootstrap = Effect.gen(function* () {
       owner: Option.getOrNull(owner),
     });
     yield* (yield* ElectronDialog.ElectronDialog).showErrorBox(
-      "This T3 home is unavailable",
+      "This U4 home is unavailable",
       DesktopHomeOwner.homeOwnedMessage(owner),
     );
     return yield* (yield* ElectronApp.ElectronApp).quit;

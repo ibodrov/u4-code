@@ -1,5 +1,17 @@
 # Brand icons
 
+## U4 Code icons
+
+The U4 Code desktop and web builds use only the icons in `u4/`. The T3 Code sets in `dev/`, `nightly/`, and `prod/` remain for the mobile app, which U4 Code does not ship.
+
+- `u4/icon.svg` is the source of the app icon. `u4/icon-dev.css` recolors it for development builds.
+- `u4/wordmark.svg` is the source of the "U4" wordmark. `apps/web/src/components/T3Wordmark.tsx` holds a copy of its paths.
+- `u4/prod/` and `u4/dev/` hold the generated PNG and ICO files. Do not edit them.
+
+Run `assets/u4/generate.sh` after you change `icon.svg` or `icon-dev.css`. It needs `rsvg-convert` (librsvg) and `node`. It writes `u4/prod/` and `u4/dev/`, and copies the development web icons to `apps/web/public`.
+
+The rest of this file describes the upstream T3 Code icons.
+
 The three Icon Composer projects are the source of truth for full application icons:
 
 - `dev/app-icon.icon`

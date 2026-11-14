@@ -18,19 +18,12 @@ install -m 0755 "$source_image" "$data/u4code/U4-Code.AppImage.new"
 mv -f "$data/u4code/U4-Code.AppImage.new" "$data/u4code/U4-Code.AppImage"
 install -m 0755 "$repo/packaging/u4/u4code" "$bin/u4code"
 
-icon="$data/icons/hicolor/512x512/apps/u4code.png"
-if command -v magick >/dev/null 2>&1; then
-  # A hue shift keeps the upstream shape but makes U4 easy to tell apart from T3.
-  magick "$repo/assets/prod/black-universal-1024.png" -resize 512x512 -modulate 100,100,160 \
-    -fill '#2563eb' -colorize 35 "$icon"
-else
-  install -m 0644 "$repo/assets/prod/black-universal-1024.png" "$icon"
-fi
+install -m 0644 "$repo/assets/u4/prod/icon-512x512.png" "$data/icons/hicolor/512x512/apps/u4code.png"
 
 cat >"$data/applications/u4code.desktop" <<EOF
 [Desktop Entry]
 Name=U4 Code
-Comment=Local fork of T3 Code
+Comment=Desktop GUI for coding agents
 Exec=$bin/u4code %U
 TryExec=$bin/u4code
 Terminal=false
