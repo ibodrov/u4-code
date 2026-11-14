@@ -164,7 +164,7 @@ t3-name	packages/provider-testing/src/replayWorkspace.ts	1
 t3-name	packages/shared/src/codexAuthHandoff.ts	1
 t3-name	packages/shared/src/managedPolicyFile.ts	6
 t3-name	packages/shared/src/otelEnvironment.ts	1
-t3-name	packages/shared/src/productIdentity.ts	1
+t3-name	packages/shared/src/productIdentity.ts	2
 t3-name	packages/shared/src/relayClient.ts	1
 t3-name	packages/shared/src/threadLinks.ts	1
 t3-name	packages/source-control-github/src/server/GitHubAppSignIn.ts	1
@@ -187,6 +187,7 @@ t3-name	scripts/notify-discord-release.ts	2
 t3-name	scripts/npm-launcher/t3.mjs	3
 t3-name	scripts/release-smoke.ts	1
 t3-name	scripts/resolve-nightly-release.ts	1
+t3-name	third-party-licenses.config.json	1
 t3-slug	.agents/skills/test-t3-mobile/scripts/pair-client.sh	2
 t3-slug	.devcontainer/devcontainer.json	2
 t3-slug	.env.example	1
@@ -582,6 +583,7 @@ t3-slug	packages/shared/src/cliRelease.ts	3
 t3-slug	packages/shared/src/git.ts	1
 t3-slug	packages/shared/src/managedPolicyFile.ts	1
 t3-slug	packages/shared/src/paletteSearch.ts	4
+t3-slug	packages/shared/src/productIdentity.ts	1
 t3-slug	packages/shared/src/promptLinks.ts	1
 t3-slug	packages/shared/src/relayTracing.ts	3
 t3-slug	packages/shared/src/releaseResource.ts	1
@@ -623,5 +625,5 @@ t3-slug	scripts/release-smoke.ts	1
 t3-slug	scripts/scenarios/add-project-tab-reaches-submit.e2e.ts	1
 t3-slug	scripts/scenarios/start-app.ts	1
 t3-slug	scripts/scenarios/t3-mobile.ts	3
-t3-slug	third-party-licenses.config.json	2
+t3-slug	third-party-licenses.config.json	3
 t3-slug	vite.config.ts	47
