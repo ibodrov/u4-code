@@ -1,7 +1,17 @@
 {
   "version": 1,
-  "updatedAt": "2026-11-12T18:25:36Z",
+  "updatedAt": "2026-11-13T00:00:00.000Z",
   "compatibility": [
+    {
+      "driver": "oh-my-pi",
+      "t3CodeRange": ">=0.0.0",
+      "recommendedRange": ">=18.14.1 <19",
+      "ranges": [
+        { "range": ">=18.14.1 <19", "status": "supported" },
+        { "range": "<18.14.1", "status": "unsupported" },
+        { "range": ">=19", "status": "unknown" }
+      ]
+    },
     {
       "driver": "codex",
       "t3CodeRange": ">=0.0.44",

@@ -588,6 +588,7 @@
     "@t3tools/shared": "workspace:*",
     "@t3tools/source-control-core": "workspace:*",
     "@t3tools/source-control-definitions": "workspace:*",
+    "@u4code/provider-oh-my-pi": "workspace:*",
     "effect": "catalog:",
     "jszip": "3.10.1",
     "three": "0.180.0",

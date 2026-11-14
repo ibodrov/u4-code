@@ -349,7 +349,7 @@ export const make = Effect.gen(function* () {
       const { provider, format } = reader;
       const directories = yield* Effect.forEach(
         yield* usageInstances(driver, settings),
-        (instance) => reader.directories(instance, { awaitRefresh }),
+        (instance) => reader.directories(instance, { awaitRefresh, stateDir: config.stateDir }),
       );
       for (const { dir: directory, fileName, refreshing } of directories.flat()) {
         if (refreshing) {

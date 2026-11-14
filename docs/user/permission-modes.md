@@ -58,3 +58,6 @@ Kiro offers only **Supervised** and **Full access**. In **Supervised** Kiro also
 review a turn's file changes. See [Kiro permissions](./providers-kiro.md#permission-modes).
 
 See the [provider guides](./install.md#providers) for setup and provider-specific limits.
+
+[oh-my-pi](./providers-oh-my-pi.md) maps Supervised to `always-ask`, Auto-accept edits to `write`,
+and Full access to `yolo`. Its explicit tool policies can still require approval in Full access.

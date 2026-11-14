@@ -1361,7 +1361,7 @@ it.layer(
       );
     });
 
-    describe("Pi model inventories", () => {
+    describe.each(["pi", "oh-my-pi"])("%s model inventories", (driver) => {
       const defaultModel = {
         slug: "default",
         name: "Pi default",
@@ -1387,8 +1387,8 @@ it.layer(
         capabilities: null,
       } as const;
       const cachedProvider = {
-        instanceId: ProviderInstanceId.make("pi-personal"),
-        driver: ProviderDriverKind.make("pi"),
+        instanceId: ProviderInstanceId.make(`${driver}-personal`),
+        driver: ProviderDriverKind.make(driver),
         status: "ready",
         enabled: true,
         installed: true,

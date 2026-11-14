@@ -116,7 +116,7 @@ export type ProviderUsageReader<Config, R> =
       /** A `refreshing` entry is not scanned; it reports its source as still being located. */
       readonly directories: (
         instance: ProviderUsageInstance<Config>,
-        options: { readonly awaitRefresh: boolean },
+        options: { readonly awaitRefresh: boolean; readonly stateDir?: string },
       ) => Effect.Effect<
         ReadonlyArray<{
           readonly dir: string;

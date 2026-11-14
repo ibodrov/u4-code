@@ -37,6 +37,11 @@ export const PROVIDER_PRESENTATION = {
     color: "#8c7bd1",
     driverKind: ProviderDriverKind.make("antigravity"),
   },
+  "oh-my-pi": {
+    label: "oh-my-pi",
+    color: "#9470d8",
+    driverKind: ProviderDriverKind.make("oh-my-pi"),
+  },
   pi: {
     label: "Pi",
     color: "#4d9f8a",
