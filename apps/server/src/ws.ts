@@ -1,3 +1,5 @@
+import { isLocalBootstrapClient } from "./u4/U4KubernetesConnectionService.ts";
+import { deriveAuthClientMetadata } from "./auth/utils.ts";
 import * as U4KubernetesWorkspaceService from "./u4/U4KubernetesWorkspaceService.ts";
 import { OrchestrationDispatchCommandError } from "@t3tools/contracts";
 // @effect-diagnostics-next-line nodeBuiltinImport:off -- A synchronous digest inside the pure provider mapping.
@@ -1419,7 +1421,10 @@ export const layerWsRpc = (
   clientAnalyticsProps: Readonly<Record<string, unknown>>,
   serverBrowser: ServerBrowser.ServerBrowser["Service"],
   reportProfiles: ServerBrowser.ProfileReporter,
-  settingsClient: { readonly secretReferences: boolean },
+  settingsClient: {
+    readonly secretReferences: boolean;
+    readonly localKubernetesBootstrap?: boolean;
+  },
 ) =>
   Layer.effectContext(
     Effect.gen(function* () {
@@ -3218,7 +3223,8 @@ export const layerWsRpc = (
         [WS_METHODS.u4WorkspaceList]: () => u4Workspaces.list,
         [WS_METHODS.u4WorkspaceLaunch]: (input) => u4Workspaces.launch(input),
         [WS_METHODS.u4WorkspaceLifecycle]: (input) => u4Workspaces.lifecycle(input),
-        [WS_METHODS.u4WorkspaceConnect]: (input) => u4Workspaces.connect(input),
+        [WS_METHODS.u4WorkspaceConnect]: (input) =>
+          u4Workspaces.connect(input, settingsClient.localKubernetesBootstrap === true),
         [WS_METHODS.u4WorkspaceExport]: (input) => u4Workspaces.export(input),
         [WS_METHODS.deviceConfigure]: (input) => deviceService.configure(input),
         [WS_METHODS.deviceTestHost]: (input) => deviceService.testHost(input),
@@ -3591,13 +3597,13 @@ export const layer = Layer.unwrap(
           return httpEffect;
         }).pipe(
           Effect.provide(
-            layerWsRpc(
-              session,
-              clientAnalyticsProps,
-              serverBrowser,
-              reportProfiles,
-              readSettingsClient(url.value),
-            ).pipe(
+            layerWsRpc(session, clientAnalyticsProps, serverBrowser, reportProfiles, {
+              ...readSettingsClient(url.value),
+              localKubernetesBootstrap: isLocalBootstrapClient({
+                ipAddress: deriveAuthClientMetadata({ request }).ipAddress,
+                origin: request.headers.origin,
+              }),
+            }).pipe(
               Layer.provideMerge(RpcSerialization.layerJson),
               // Handler-context reporters see only request defects, not server-wide defects.
               Layer.provide(DefectReporter.layer),

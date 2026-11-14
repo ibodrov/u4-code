@@ -98,7 +98,14 @@ const program = Effect.gen(function* () {
     "native/resource-monitor/target/release/t3-resource-monitor",
     path.join(runtime, "resource-monitor/linux-x64/t3-resource-monitor"),
   );
-  for (const file of ["Dockerfile", "build-worker.mjs", "workspace.mjs", "entrypoint.mjs"])
+  for (const file of [
+    "Dockerfile",
+    "build-worker.mjs",
+    "build-snapshot.mjs",
+    "prepare-volume.mjs",
+    "workspace.mjs",
+    "entrypoint.mjs",
+  ])
     yield* fs.copyFile(`packaging/u4/kubernetes/${file}`, path.join(destination, file));
   yield* Effect.log(`Staged U4 Kubernetes image at ${destination}`);
 });

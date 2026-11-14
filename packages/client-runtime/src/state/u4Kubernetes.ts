@@ -28,6 +28,8 @@ export function createU4KubernetesAtoms<R, E>(
     connect: createEnvironmentRpcCommand(runtime, {
       label: "u4:workspaces:connect",
       tag: WS_METHODS.u4WorkspaceConnect,
+      onSuccess: ({ environmentId }, registry) =>
+        Effect.sync(() => registry.refresh(list({ environmentId, input: {} }))),
     }),
     export: createEnvironmentRpcCommand(runtime, {
       label: "u4:workspaces:export",

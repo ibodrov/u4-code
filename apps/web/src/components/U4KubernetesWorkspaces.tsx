@@ -5,6 +5,8 @@ import {
   type ScopedProjectRef,
   type U4KubernetesWorkspace,
 } from "@t3tools/contracts";
+import { isLocalLoopbackHost } from "@t3tools/shared/hostClassification";
+import { useEnvironmentHttpBaseUrl } from "~/state/environments";
 import { useState } from "react";
 import { create } from "zustand";
 import { u4Kubernetes } from "~/state/u4Kubernetes";
@@ -185,7 +187,9 @@ function WorkspaceRow({
   const [head, setHead] = useState("");
   const [title, setTitle] = useState("");
   const [resultPath, setResultPath] = useState<string | null>(null);
-  const act = async (action: "refresh" | "stop" | "restart" | "reattach" | "forget") => {
+  const act = async (
+    action: "refresh" | "stop" | "restart" | "reattach" | "forget" | "restore",
+  ) => {
     if (
       action === "restart" &&
       !(await requestConfirmDialog(
@@ -203,7 +207,7 @@ function WorkspaceRow({
     if (
       action === "forget" &&
       !(await requestConfirmDialog(
-        `Forget ${workspace.name}? Its retained PVC ${workspace.pvcName} remains in the cluster for manual recovery.`,
+        `Archive ${workspace.name}? Its recovery record and retained PVC ${workspace.pvcName} remain available here. Restore registration to use them again.`,
       ))
     )
       return;
@@ -218,13 +222,31 @@ function WorkspaceRow({
     });
     setBusy(false);
   };
+  const managerUrl = useEnvironmentHttpBaseUrl(environmentId);
+  const canBootstrap =
+    managerUrl !== null &&
+    isLocalLoopbackHost(new URL(managerUrl).hostname) &&
+    isLocalLoopbackHost(window.location.hostname) &&
+    window.location.protocol === "http:";
+  const connectVia = async (transport: "tailnet" | "forward") => {
+    setBusy(true);
+    const result = await connect({ environmentId, input: { id: workspace.id, transport } });
+    if (result._tag === "Success" && result.value.route)
+      await pair({
+        host: result.value.route,
+        pairingCode: result.value.pairingCode,
+        expectedEnvironmentId: EnvironmentId.make(result.value.environmentId),
+      });
+    setBusy(false);
+  };
   const canUseRoute =
     workspace.route !== null &&
     (window.location.protocol !== "https:" || workspace.route.startsWith("https:"));
   return (
     <div className="space-y-2 border-t p-4" data-testid="u4-workspace">
       <div className="font-medium">
-        {workspace.name} · {workspace.status}
+        {workspace.name} · {workspace.status}{" "}
+        {workspace.forgottenAt ? "(archived)" : "(saved status)"}
       </div>
       <div className="break-all text-xs text-muted-foreground">
         {workspace.profileId} · {workspace.podName} · {workspace.node ?? "Unassigned node"} ·{" "}
@@ -236,7 +258,17 @@ function WorkspaceRow({
         restarts {workspace.builderRestarts} {workspace.builderRestartReason ?? ""} · PVC{" "}
         {workspace.pvcName} · Environment {workspace.environmentId ?? "Pending"}
       </div>
+      <p className="text-xs text-muted-foreground">
+        {workspace.verifiedAt
+          ? `Last verified ${workspace.verifiedAt}. Refresh status to check again.`
+          : "Unverified saved record. Refresh status before relying on it."}
+      </p>
       <WorkspaceActivity remoteEnvironmentId={workspace.environmentId} />
+      {workspace.bootstrapExpiresAt ? (
+        <p className="text-xs text-muted-foreground">
+          Local bootstrap expires {workspace.bootstrapExpiresAt}.
+        </p>
+      ) : null}
       {!canUseRoute && workspace.route ? (
         <p className="text-xs text-muted-foreground">
           This HTTPS browser needs an HTTPS route. Use the desktop app or the workspace's own
@@ -250,25 +282,53 @@ function WorkspaceRow({
         <Button
           variant="outline"
           size="sm"
-          disabled={busy || !canUseRoute || workspace.status !== "ready"}
-          onClick={async () => {
-            setBusy(true);
-            const result = await connect({ environmentId, input: { id: workspace.id } });
-            if (result._tag === "Success" && result.value.route)
-              await pair({
-                host: result.value.route,
-                pairingCode: result.value.pairingCode,
-                expectedEnvironmentId: EnvironmentId.make(result.value.environmentId),
-              });
-            setBusy(false);
-          }}
+          disabled={busy || !canUseRoute || workspace.status !== "ready" || !!workspace.forgottenAt}
+          onClick={() => connectVia("tailnet")}
         >
           Pair environment
         </Button>
-        <Button variant="outline" size="sm" disabled={busy} onClick={() => act("reattach")}>
+        {canBootstrap ? (
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={busy || workspace.status !== "ready" || !!workspace.forgottenAt}
+            onClick={() => connectVia("forward")}
+          >
+            {workspace.bootstrapExpiresAt ? "Reconnect local bootstrap" : "Use local bootstrap"}
+          </Button>
+        ) : null}
+        {workspace.bootstrapExpiresAt ? (
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true);
+              await connect({
+                environmentId,
+                input: { id: workspace.id, transport: "stop-forward" },
+              });
+              setBusy(false);
+            }}
+          >
+            Stop local bootstrap
+          </Button>
+        ) : null}
+        {workspace.forgottenAt ? (
+          <Button variant="outline" size="sm" disabled={busy} onClick={() => act("restore")}>
+            Restore registration
+          </Button>
+        ) : null}
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={busy || !!workspace.forgottenAt}
+          onClick={() => act("reattach")}
+        >
           Reattach
         </Button>
-        {workspace.status === "stopped" || workspace.status === "lost" ? (
+        {workspace.forgottenAt ? null : workspace.status === "stopped" ||
+          workspace.status === "lost" ? (
           <Button variant="outline" size="sm" disabled={busy} onClick={() => act("restart")}>
             Bring workspace back
           </Button>
@@ -280,7 +340,7 @@ function WorkspaceRow({
         <Button
           variant="outline"
           size="sm"
-          disabled={busy || workspace.status !== "ready"}
+          disabled={busy || workspace.status !== "ready" || !!workspace.forgottenAt}
           onClick={() => setExportOpen(!exportOpen)}
         >
           Return result
@@ -291,7 +351,7 @@ function WorkspaceRow({
           disabled={busy || workspace.status !== "stopped"}
           onClick={() => act("forget")}
         >
-          Forget registration
+          Archive registration
         </Button>
       </div>
       {exportOpen ? (

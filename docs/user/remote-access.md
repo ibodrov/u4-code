@@ -487,17 +487,19 @@ then create its threads with separate worktrees. Heavy Maven/npm commands must u
 
 The tailnet Service provides HTTP. An HTTPS-hosted client needs an HTTPS endpoint;
 use desktop or the workspace's own HTTP page until one is configured. A manager's
-loopback port-forward is for local bootstrap and recovery and is never a remote route.
+loopback port-forward is available through **Use local bootstrap** on the managing computer when the operator route is unavailable. It uses ordinary pairing, expires after 30 minutes, and can be stopped explicitly. Reconnecting checks the same workspace identity; remote clients never receive this localhost route.
 Mobile can pair with the ordinary environment; cluster management is desktop/web only.
 
 Container crashes restart automatically. Status refresh and reattachment inspect the
 existing Pod; a network outage never creates replacement compute. Stopping deletes
 compute and retains the repository, worktrees, environment identity, database,
-provider home and caches. Bringing it back requires explicit approval, the old Pod's
+provider home and caches. Saved status includes the last verification time; refresh it before relying on it. The active-compute cap is separate from retained storage. Bringing it back requires explicit approval, the old Pod's
 absence, and a healthy previous node. U4 refuses replacement when it cannot fence the
-old instance. Interrupted turns do not automatically continue after a server restart.
+old instance, including when the previous Node was deleted or cannot be read. Interrupted turns do not automatically continue after a server restart.
 Schedules remain environment-local and are not disabled by this recovery setting;
 no schedules are imported and a stopped workspace is never automatically awakened.
+
+Builds through `u4-build` run in a private writable copy of the source worktree; the builder sees source read-only. Build outputs and caches stay in the builder, so use `u4-build` to inspect generated test reports. Source edits or a new HEAD refresh that copy. Run commands from the worktree and use relative paths; embedded absolute source paths still refer to read-only files.
 
 Returning a result requires its branch and exact commit SHA. U4 verifies the bundle,
 base ancestry and selected checkpoint refs, and imports into isolated staging on the
@@ -505,7 +507,7 @@ managing environment. It writes a local PR draft and diff without changing the s
 checkout. This MVP has no Git/forge publication action. Publishing later requires
 separate approval of the exact SHA and destination.
 
-Forgetting a stopped registration removes its Service and local management record,
-but retains its PVC. Keep the workspace ID and PVC name for manual recovery. Retained
+Archiving a stopped registration removes its Service,
+but retains its PVC and archives its recovery record. **Restore registration** makes that retained workspace manageable again without creating compute; bringing it back still needs replacement approval. Retained
 storage is not a backup; deleting a PVC and reclaiming its retained volume are separate,
 destructive administrator operations.

@@ -1,21 +1,62 @@
-import { it } from "vite-plus/test";
+import { it, vi } from "vite-plus/test";
 import * as NodeAssert from "node:assert/strict";
 import * as NodeFSP from "node:fs/promises";
 import * as NodeNet from "node:net";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
+import * as NodeUtil from "node:util";
+import * as NodeChildProcess from "node:child_process";
 import { startWorker } from "./build-worker.mjs";
 
+const io = vi.hoisted(() => ({ gate: null }));
+vi.mock("node:fs/promises", async (importOriginal) => {
+  const original = await importOriginal();
+  return {
+    ...original,
+    realpath: async (path, ...args) => {
+      if (io.gate && path === io.gate.path) {
+        const gate = io.gate;
+        io.gate = null;
+        gate.entered.resolve();
+        await gate.release.promise;
+      }
+      return original.realpath(path, ...args);
+    },
+  };
+});
 async function fixture() {
+  io.gate = null;
   const directory = await NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "u4-build-test-"));
   const workspace = NodePath.join(directory, "workspace"),
     home = NodePath.join(directory, "builder"),
     cache = NodePath.join(directory, "cache"),
+    buildRoot = NodePath.join(directory, "build"),
     socketPath = NodePath.join(directory, "worker.sock");
-  for (const path of [workspace, home, cache]) await NodeFSP.mkdir(path);
-  const worker = await startWorker({ socketPath, workspaceRoot: workspace, home, cache });
+  for (const path of [workspace, home, cache, buildRoot]) await NodeFSP.mkdir(path);
+  const git = (...args) =>
+    NodeUtil.promisify(NodeChildProcess.execFile)("git", args, { cwd: workspace });
+  await git("init", "-b", "main");
+  await NodeFSP.writeFile(NodePath.join(workspace, "source.txt"), "original\n");
+  await git("add", ".");
+  await git(
+    "-c",
+    "user.name=Fixture",
+    "-c",
+    "user.email=fixture@example.invalid",
+    "commit",
+    "-m",
+    "fixture",
+  );
+  const worker = await startWorker({
+    socketPath,
+    workspaceRoot: workspace,
+    buildRoot,
+    home,
+    cache,
+  });
   return {
     workspace,
+    buildRoot,
     home,
     socketPath,
     async [Symbol.asyncDispose]() {
@@ -58,7 +99,8 @@ it("routes cwd/output/status to a separate child without inherited provider cred
     .map((e) => Buffer.from(e.data, "base64").toString())
     .join("");
   const state = JSON.parse(stdout);
-  NodeAssert.equal(state.cwd, f.workspace);
+  NodeAssert.ok(state.cwd.startsWith(f.buildRoot + NodePath.sep));
+  NodeAssert.notEqual(state.cwd, f.workspace);
   NodeAssert.equal(state.home, f.home);
   NodeAssert.deepEqual(
     state.vars.sort(),
@@ -116,4 +158,96 @@ it("rejects concurrent builds, cancels the owned process, and rejects paths outs
   const missing = await command(f.socketPath, f.workspace, ["u4-no-such-build-command"]).done;
   NodeAssert.equal(missing.at(-1).code, 125);
   NodeAssert.ok(missing.some((e) => e.type === "error" && e.reason === "spawn"));
+});
+
+it("keeps its reservation when a second run line arrives during filesystem preparation", async () => {
+  await using f = await fixture();
+  const entered = Promise.withResolvers(),
+    release = Promise.withResolvers();
+  io.gate = { path: f.workspace, entered, release };
+  const invalid = Promise.withResolvers();
+  const first = command(
+    f.socketPath,
+    f.workspace,
+    [process.execPath, "-e", "process.exit(0)"],
+    (event) => {
+      if (event.type === "error") invalid.resolve();
+    },
+  );
+  try {
+    await entered.promise;
+    first.socket.write(
+      JSON.stringify({ cwd: f.workspace, argv: [process.execPath, "-e", "process.exit(0)"] }) +
+        "\n",
+    );
+    await invalid.promise;
+    const second = await command(f.socketPath, f.workspace, [
+      process.execPath,
+      "-e",
+      "process.exit(0)",
+    ]).done;
+    NodeAssert.deepEqual(second, [{ type: "error", reason: "busy" }]);
+  } finally {
+    release.resolve();
+    io.gate = null;
+    await first.done;
+  }
+});
+it("builds a private copy, preserves outputs until source changes, and leaves source metadata unchanged", async () => {
+  await using f = await fixture();
+  const source = NodePath.join(f.workspace, "source.txt");
+  const config = await NodeFSP.readFile(NodePath.join(f.workspace, ".git/config"), "utf8");
+  const edit = await command(f.socketPath, f.workspace, [
+    process.execPath,
+    "-e",
+    'require("fs").writeFileSync("source.txt","builder edit\\n");require("fs").writeFileSync("generated.txt","build output");require("child_process").execFileSync("git",["config","core.fsmonitor","echo marker"]);',
+  ]).done;
+  NodeAssert.equal(edit.at(-1).code, 0);
+  NodeAssert.equal(await NodeFSP.readFile(source, "utf8"), "original\n");
+  NodeAssert.equal(
+    await NodeFSP.readFile(NodePath.join(f.workspace, ".git/config"), "utf8"),
+    config,
+  );
+  const read = await command(f.socketPath, f.workspace, [
+    process.execPath,
+    "-e",
+    'process.stdout.write(require("fs").readFileSync("generated.txt"));',
+  ]).done;
+  NodeAssert.ok(
+    read.some(
+      (e) => e.type === "stdout" && Buffer.from(e.data, "base64").toString() === "build output",
+    ),
+  );
+  await NodeFSP.writeFile(source, "updated source\n");
+  const changed = await command(f.socketPath, f.workspace, [
+    process.execPath,
+    "-e",
+    'process.stdout.write(require("fs").readFileSync("source.txt"));',
+  ]).done;
+  NodeAssert.ok(
+    changed.some(
+      (e) => e.type === "stdout" && Buffer.from(e.data, "base64").toString() === "updated source\n",
+    ),
+  );
+  const future = NodePath.join(f.workspace, "future");
+  await NodeUtil.promisify(NodeChildProcess.execFile)("git", [
+    "-C",
+    f.workspace,
+    "worktree",
+    "add",
+    "-b",
+    "future",
+    future,
+  ]);
+  const pointer = await NodeFSP.readFile(NodePath.join(future, ".git"), "utf8");
+  const copied = await command(f.socketPath, future, [
+    process.execPath,
+    "-e",
+    'process.stdout.write(String(require("fs").statSync(".git").isDirectory()))',
+  ]).done;
+  NodeAssert.equal(copied.at(-1).code, 0);
+  NodeAssert.ok(
+    copied.some((e) => e.type === "stdout" && Buffer.from(e.data, "base64").toString() === "true"),
+  );
+  NodeAssert.equal(await NodeFSP.readFile(NodePath.join(future, ".git"), "utf8"), pointer);
 });

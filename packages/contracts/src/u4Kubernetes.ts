@@ -41,6 +41,9 @@ export const U4KubernetesWorkspace = Schema.Struct({
   snapshotSha256: Schema.String,
   snapshotInstalled: Schema.Boolean,
   sourceRemoteUrl: Schema.optionalKey(Schema.String),
+  verifiedAt: Schema.optionalKey(Schema.String),
+  bootstrapExpiresAt: Schema.optionalKey(Schema.String),
+  forgottenAt: Schema.optionalKey(Schema.String),
   environmentId: Schema.NullOr(Schema.String),
   node: Schema.NullOr(Schema.String),
   route: Schema.NullOr(Schema.String),
@@ -62,20 +65,24 @@ export const U4WorkspaceLaunchRequest = Schema.Struct({
 export type U4WorkspaceLaunchRequest = typeof U4WorkspaceLaunchRequest.Type;
 export const U4WorkspaceLifecycleRequest = Schema.Struct({
   id: ResourceName,
-  action: Schema.Literals(["refresh", "stop", "restart", "reattach", "forget"]),
+  action: Schema.Literals(["refresh", "stop", "restart", "reattach", "forget", "restore"]),
   approveReplacement: Schema.optionalKey(Schema.Boolean),
 });
 export type U4WorkspaceLifecycleRequest = typeof U4WorkspaceLifecycleRequest.Type;
-export const U4WorkspaceConnectRequest = Schema.Struct({ id: ResourceName });
+export const U4WorkspaceConnectRequest = Schema.Struct({
+  id: ResourceName,
+  transport: Schema.optionalKey(Schema.Literals(["tailnet", "forward", "stop-forward"])),
+});
 export const U4WorkspaceConnection = Schema.Struct({
   environmentId: Schema.String,
   route: Schema.NullOr(Schema.String),
   // Bootstrap credentials are returned only to an environment-maintenance session.
   pairingCode: Schema.String,
+  forwardExpiresAt: Schema.optionalKey(Schema.String),
 });
 export const U4WorkspaceExportRequest = Schema.Struct({
   id: ResourceName,
-  branch: Schema.String.check(Schema.isPattern(/^[a-zA-Z0-9][a-zA-Z0-9/_-]{0,120}$/)),
+  branch: Schema.String.check(Schema.isPattern(/^[a-zA-Z0-9][a-zA-Z0-9/_.-]{0,120}$/)),
   expectedHead: Schema.String.check(Schema.isPattern(/^[a-f0-9]{40}$/)),
   title: TrimmedNonEmptyString,
   body: Schema.String.check(Schema.isMaxLength(20000)),

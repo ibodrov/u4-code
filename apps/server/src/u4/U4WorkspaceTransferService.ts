@@ -105,12 +105,41 @@ export const make = Effect.gen(function* () {
           cwd,
           allowNonZeroExit: true,
         });
-        if (
-          status ||
-          /^160000 /m.test(tree) ||
-          /\t(?:.*\/)?\.env(?:\.[^/]+)?$/m.test(tree) ||
-          attributes.exitCode !== 1
-        )
+        const envPaths = tree
+          .split("\n")
+          .map((line) => line.split("\t")[1])
+          .filter((p): p is string => p !== undefined && /(^|\/)\.env(?:\.[^/]+)?$/.test(p));
+        for (const envPath of envPaths) {
+          if (
+            ![".env.example", ".env.sample", ".env.template"].includes(envPath.split("/").at(-1)!)
+          )
+            return yield* new U4WorkspaceError({ stage: "snapshot" });
+          const template = yield* git(cwd, ["show", `HEAD:${envPath}`]);
+          if (
+            /-----BEGIN [A-Z ]*PRIVATE KEY-----|(?:ghp_|github_pat_|sk-)[A-Za-z0-9_-]{16,}/.test(
+              template,
+            ) ||
+            template.split("\n").some((line) => {
+              const match =
+                /^\s*(?:export\s+)?([A-Za-z0-9_]*(?:TOKEN|PASSWORD|SECRET|API_KEY|CREDENTIAL|PRIVATE_KEY)[A-Za-z0-9_]*)\s*=\s*(.*)$/i.exec(
+                  line,
+                );
+              if (!match) return false;
+              const value = match[2]!
+                .replace(/\s+#.*$/, "")
+                .trim()
+                .replace(/^['"]|['"]$/g, "");
+              return (
+                value !== "" &&
+                !/^(?:\$\{[^}]+\}|<[^>]+>|(?:your[-_]|replace|change|example|placeholder|dummy|test)[A-Za-z0-9_ .-]*)$/i.test(
+                  value,
+                )
+              );
+            })
+          )
+            return yield* new U4WorkspaceError({ stage: "snapshot" });
+        }
+        if (status || /^160000 /m.test(tree) || attributes.exitCode !== 1)
           return yield* new U4WorkspaceError({ stage: "snapshot" });
       });
       yield* check;
@@ -201,73 +230,81 @@ export const make = Effect.gen(function* () {
       )
         return yield* new U4WorkspaceError({ stage: "transfer" });
       const directory = `${repository.directory}/results/${id}`;
-      yield* fs.makeDirectory(directory, { recursive: true });
-      const bundlePath = `${directory}/result.bundle`,
-        stagingPath = `${directory}/staging`,
-        draftPath = `${directory}/pr-draft.json`;
-      yield* kubectl.run(profile, [
-        "cp",
-        `${workspace.podName}:${receipt.path}`,
-        bundlePath,
-        "-c",
-        "server",
-      ]);
-      if ((yield* fs.stat(bundlePath)).size > 256 * 1024 * 1024)
-        return yield* new U4WorkspaceError({ stage: "transfer" });
-      const bundleSha256 = yield* digest.digestHex(Digest.sha256, yield* fs.readFile(bundlePath));
-      if (bundleSha256 !== receipt.sha256)
-        return yield* new U4WorkspaceError({ stage: "transfer" });
-      yield* fs.makeDirectory(stagingPath);
-      yield* git(stagingPath, ["init"]);
-      yield* git(stagingPath, ["bundle", "verify", bundlePath]);
-      const refs = (yield* git(stagingPath, ["bundle", "list-heads", bundlePath]))
-        .split("\n")
-        .map((line) => line.split(" ")[1]!);
-      if (
-        !refs.includes(`refs/heads/${input.branch}`) ||
-        refs.some(
-          (ref) =>
-            ref !== `refs/heads/${input.branch}` &&
-            !ref.startsWith("refs/t3/orchestration-v2/checkpoints/"),
+      return yield* Effect.gen(function* () {
+        yield* fs.makeDirectory(directory, { recursive: true });
+        const bundlePath = `${directory}/result.bundle`,
+          stagingPath = `${directory}/staging`,
+          draftPath = `${directory}/pr-draft.json`;
+        yield* kubectl.download(
+          profile,
+          ["exec", workspace.podName, "-c", "server", "--", "cat", receipt.path],
+          bundlePath,
+          256 * 1024 * 1024,
+        );
+        if ((yield* fs.stat(bundlePath)).size > 256 * 1024 * 1024)
+          return yield* new U4WorkspaceError({ stage: "transfer" });
+        const bundleSha256 = yield* digest.digestHex(Digest.sha256, yield* fs.readFile(bundlePath));
+        if (bundleSha256 !== receipt.sha256)
+          return yield* new U4WorkspaceError({ stage: "transfer" });
+        yield* fs.makeDirectory(stagingPath);
+        yield* git(stagingPath, ["init"]);
+        yield* git(stagingPath, ["bundle", "verify", bundlePath]);
+        const refs = (yield* git(stagingPath, ["bundle", "list-heads", bundlePath]))
+          .split("\n")
+          .map((line) => line.split(" ")[1]!);
+        if (
+          !refs.includes(`refs/heads/${input.branch}`) ||
+          refs.some(
+            (ref) =>
+              ref !== `refs/heads/${input.branch}` &&
+              !ref.startsWith("refs/t3/orchestration-v2/checkpoints/"),
+          )
         )
-      )
-        return yield* new U4WorkspaceError({ stage: "transfer" });
-      yield* git(stagingPath, ["fetch", bundlePath, ...refs.map((ref) => `${ref}:${ref}`)]);
-      if (
-        (yield* git(stagingPath, ["rev-parse", `refs/heads/${input.branch}`])) !==
-        input.expectedHead
-      )
-        return yield* new U4WorkspaceError({ stage: "transfer" });
-      yield* git(stagingPath, [
-        "merge-base",
-        "--is-ancestor",
-        workspace.baseSha,
-        input.expectedHead,
-      ]);
-      yield* fs.writeFileString(
-        `${directory}/diff.patch`,
-        yield* git(stagingPath, ["diff", "--binary", workspace.baseSha, input.expectedHead]),
-      );
-      yield* fs.writeFileString(
-        draftPath,
-        yield* U4KubectlClient.encodeJson({
-          title: input.title,
-          body: input.body,
+          return yield* new U4WorkspaceError({ stage: "transfer" });
+        yield* git(stagingPath, ["fetch", bundlePath, ...refs.map((ref) => `${ref}:${ref}`)]);
+        if (
+          (yield* git(stagingPath, ["rev-parse", `refs/heads/${input.branch}`])) !==
+          input.expectedHead
+        )
+          return yield* new U4WorkspaceError({ stage: "transfer" });
+        yield* git(stagingPath, [
+          "merge-base",
+          "--is-ancestor",
+          workspace.baseSha,
+          input.expectedHead,
+        ]);
+        yield* git(stagingPath, [
+          "diff",
+          "--binary",
+          `--output=${directory}/diff.patch`,
+          workspace.baseSha,
+          input.expectedHead,
+        ]);
+        yield* fs.writeFileString(
+          draftPath,
+          yield* U4KubectlClient.encodeJson({
+            title: input.title,
+            body: input.body,
+            head: input.expectedHead,
+            base: workspace.baseSha,
+            branch: input.branch,
+            published: false,
+            approvalRequired: true,
+          }),
+        );
+        return {
           head: input.expectedHead,
           base: workspace.baseSha,
-          branch: input.branch,
-          published: false,
-          approvalRequired: true,
-        }),
+          bundleSha256,
+          bundlePath,
+          stagingPath,
+          draftPath,
+        };
+      }).pipe(
+        Effect.onError(() =>
+          fs.remove(directory, { recursive: true, force: true }).pipe(Effect.ignore),
+        ),
       );
-      return {
-        head: input.expectedHead,
-        base: workspace.baseSha,
-        bundleSha256,
-        bundlePath,
-        stagingPath,
-        draftPath,
-      };
     },
     Effect.mapError((cause) =>
       isWorkspaceError(cause) ? cause : new U4WorkspaceError({ stage: "transfer", cause }),

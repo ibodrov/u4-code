@@ -3,6 +3,7 @@ import * as NodeChildProcess from "node:child_process";
 import * as NodeFSP from "node:fs/promises";
 import * as NodePath from "node:path";
 import * as NodeStringDecoder from "node:string_decoder";
+import { prepareSnapshot } from "./build-snapshot.mjs";
 import * as NodeURL from "node:url";
 
 const within = (root, path) => {
@@ -10,13 +11,16 @@ const within = (root, path) => {
   return rel === "" || (rel.split(NodePath.sep)[0] !== ".." && !NodePath.isAbsolute(rel));
 };
 
-export async function startWorker({ socketPath, workspaceRoot, home, cache }) {
+export async function startWorker({ socketPath, workspaceRoot, buildRoot, home, cache }) {
   const root = await NodeFSP.realpath(workspaceRoot);
   let active = null;
   const sockets = new Set();
+  const pending = new Set();
+  const children = new Set();
   const server = NodeNet.createServer((socket) => {
     sockets.add(socket);
     let buffer = "";
+    const preparation = new AbortController();
     let started = false;
     let child = null;
     let cancelled = false;
@@ -28,6 +32,7 @@ export async function startWorker({ socketPath, workspaceRoot, home, cache }) {
     };
     const cancel = () => {
       cancelled = true;
+      preparation.abort();
       if (!child || child.exitCode !== null || child.signalCode !== null) return;
       try {
         process.kill(-child.pid, "SIGTERM");
@@ -44,7 +49,7 @@ export async function startWorker({ socketPath, workspaceRoot, home, cache }) {
       cancel();
     });
     socket.on("error", cancel);
-    socket.on("data", async (chunk) => {
+    const receive = async (chunk) => {
       buffer += decoder.write(chunk);
       if (buffer.length > 65536) {
         socket.destroy();
@@ -60,7 +65,12 @@ export async function startWorker({ socketPath, workspaceRoot, home, cache }) {
             cancel();
             continue;
           }
-          if (started) throw new Error("one command per connection");
+          if (started) {
+            send({ type: "error", reason: "invalid" });
+            cancel();
+            socket.end();
+            return;
+          }
           started = true;
           if (active) {
             send({ type: "error", reason: "busy" });
@@ -76,10 +86,11 @@ export async function startWorker({ socketPath, workspaceRoot, home, cache }) {
             typeof request.cwd !== "string"
           )
             throw new Error("invalid command");
-          const cwd = await NodeFSP.realpath(NodePath.resolve(request.cwd));
-          if (!within(root, cwd)) throw new Error("cwd outside workspace");
+          const sourceCwd = await NodeFSP.realpath(NodePath.resolve(request.cwd));
+          if (!within(root, sourceCwd)) throw new Error("cwd outside workspace");
+          const cwd = await prepareSnapshot(root, sourceCwd, buildRoot, preparation.signal);
           if (socket.destroyed || cancelled) {
-            active = null;
+            if (active === socket) active = null;
             return;
           }
           child = NodeChildProcess.spawn(request.argv[0], request.argv.slice(1), {
@@ -93,14 +104,16 @@ export async function startWorker({ socketPath, workspaceRoot, home, cache }) {
               HOME: home,
               MAVEN_USER_HOME: `${cache}/maven`,
               npm_config_cache: `${cache}/npm`,
-              MAVEN_OPTS:
-                "-Xmx5g -XX:ActiveProcessorCount=3 -Dmaven.repo.local=/cache/maven/repository -Duser.home=/builder",
+              MAVEN_OPTS: `-Xmx5g -XX:ActiveProcessorCount=3 -Dmaven.repo.local=${cache}/maven/repository -Duser.home=${home}`,
               NODE_OPTIONS: "--max-old-space-size=6144",
               GIT_CONFIG_NOSYSTEM: "1",
               GIT_CONFIG_GLOBAL: "/dev/null",
               GIT_TERMINAL_PROMPT: "0",
             },
           });
+          const ended = new Promise((resolve) => child.once("close", resolve));
+          children.add(ended);
+          ended.then(() => children.delete(ended));
           send({ type: "started", pid: child.pid, cwd });
           for (const [type, stream] of [
             ["stdout", child.stdout],
@@ -124,7 +137,7 @@ export async function startWorker({ socketPath, workspaceRoot, home, cache }) {
             } catch {}
           });
           child.on("close", (code, signal) => {
-            active = null;
+            if (active === socket) active = null;
             send({ type: "exit", code: spawnFailed ? 125 : code, signal });
             socket.end();
           });
@@ -134,6 +147,11 @@ export async function startWorker({ socketPath, workspaceRoot, home, cache }) {
           socket.end();
         }
       }
+    };
+    socket.on("data", (chunk) => {
+      const work = receive(chunk).catch(() => socket.destroy());
+      pending.add(work);
+      work.finally(() => pending.delete(work));
     });
   });
   await NodeFSP.rm(socketPath, { force: true });
@@ -145,6 +163,8 @@ export async function startWorker({ socketPath, workspaceRoot, home, cache }) {
   return {
     close: async () => {
       for (const socket of sockets) socket.destroy();
+      await Promise.allSettled(pending);
+      await Promise.allSettled(children);
       await new Promise((res) => server.close(res));
       await NodeFSP.rm(socketPath, { force: true });
     },
@@ -207,7 +227,8 @@ if (import.meta.url === NodeURL.pathToFileURL(process.argv[1]).href) {
     const worker = await startWorker({
       socketPath: "/run/u4-build/worker.sock",
       workspaceRoot: "/workspace",
-      home: "/builder",
+      buildRoot: "/build",
+      home: "/cache/home",
       cache: "/cache",
     });
     const stop = async () => {

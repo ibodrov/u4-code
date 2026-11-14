@@ -8,6 +8,7 @@ import {
   type U4ClusterProfile,
   type U4WorkspaceList,
 } from "@t3tools/contracts";
+import * as DateTime from "effect/DateTime";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -30,9 +31,13 @@ export class U4KubernetesWorkspaceService extends Context.Service<
     readonly lifecycle: (
       input: U4WorkspaceLifecycleRequest,
     ) => Effect.Effect<U4KubernetesWorkspace, U4WorkspaceError>;
-    readonly connect: (input: {
-      readonly id: string;
-    }) => Effect.Effect<
+    readonly connect: (
+      input: {
+        readonly id: string;
+        readonly transport?: "tailnet" | "forward" | "stop-forward";
+      },
+      localClient?: boolean,
+    ) => Effect.Effect<
       { environmentId: string; route: string | null; pairingCode: string },
       U4WorkspaceError
     >;
@@ -48,7 +53,17 @@ export const make = Effect.gen(function* () {
   const transfer = yield* U4WorkspaceTransferService.U4WorkspaceTransferService;
   const connections = yield* U4KubernetesConnectionService.U4KubernetesConnectionService;
   const random = yield* SecureRandom.SecureRandom;
-  const mutex = yield* Semaphore.make(1);
+  const ledgerLock = yield* Semaphore.make(1);
+  const allocation = yield* Semaphore.make(1);
+  const locks = new Map<string, Semaphore.Semaphore>();
+  const locked = <A, E, R>(key: string, effect: Effect.Effect<A, E, R>) => {
+    let lock = locks.get(key);
+    if (!lock) {
+      lock = Semaphore.makeUnsafe(1);
+      locks.set(key, lock);
+    }
+    return lock.withPermits(1)(effect);
+  };
   const profileFor = Effect.fn("U4KubernetesWorkspaceService.profile")(function* (id: string) {
     const profile = (yield* repository.profiles).find((p) => p.id === id);
     if (!profile) return yield* new U4WorkspaceError({ stage: "configuration" });
@@ -70,7 +85,7 @@ export const make = Effect.gen(function* () {
       workspaces: [...ledger.workspaces.filter((w) => w.id !== workspace.id), workspace],
     });
     return workspace;
-  });
+  }, ledgerLock.withPermits(1));
   const pods = Effect.fn("U4KubernetesWorkspaceService.pods")(function* (
     profile: U4ClusterProfile,
     workspace: U4KubernetesWorkspace,
@@ -126,6 +141,7 @@ export const make = Effect.gen(function* () {
         ...workspace,
         status: workspace.status === "stopped" ? "stopped" : "lost",
         route: null,
+        verifiedAt: DateTime.formatIso(yield* DateTime.now),
       });
     const server = pod.status.containerStatuses?.find((c) => c.name === "server");
     const builder = pod.status.containerStatuses?.find((c) => c.name === "builder");
@@ -139,6 +155,20 @@ export const make = Effect.gen(function* () {
       )
     )
       return yield* new U4WorkspaceError({ stage: "ownership" });
+    const expectedSelector = workspaceResources(profile, workspace).service.spec.selector;
+    if (
+      Object.keys(service.spec?.selector ?? {}).length !== Object.keys(expectedSelector).length ||
+      Object.entries(expectedSelector).some(([k, v]) => service.spec?.selector?.[k] !== v)
+    ) {
+      yield* kubectl.run(profile, [
+        "patch",
+        "service",
+        workspace.serviceName,
+        "--type=merge",
+        "-p",
+        yield* U4KubectlClient.encodeJson({ spec: { selector: expectedSelector } }),
+      ]);
+    }
     const hostname = service.status?.loadBalancer?.ingress?.find((i) =>
       i.hostname?.endsWith(".ts.net"),
     )?.hostname;
@@ -160,6 +190,7 @@ export const make = Effect.gen(function* () {
     return yield* save({
       ...workspace,
       podUid: pod.metadata.uid,
+      verifiedAt: DateTime.formatIso(yield* DateTime.now),
       node: pod.spec.nodeName ?? null,
       environmentId,
       route: hostname && /^[a-zA-Z0-9.-]+$/.test(hostname) ? `http://${hostname}:4773` : null,
@@ -184,176 +215,224 @@ export const make = Effect.gen(function* () {
     workspace: U4KubernetesWorkspace,
   ) {
     const resources = workspaceResources(profile, workspace);
-    yield* kubectl.run(
-      profile,
-      ["create", "-f", "-"],
-      yield* U4KubectlClient.encodeJson(resources.pod),
-    );
-    // Selectors advance only after the new Pod is recorded; a failed create never reroutes traffic.
-    yield* assertResource(profile, workspace, "service", workspace.serviceName);
-    yield* kubectl.run(profile, [
-      "patch",
-      "service",
-      workspace.serviceName,
-      "--type=merge",
-      "-p",
-      yield* U4KubectlClient.encodeJson({ spec: resources.service.spec }),
-    ]);
+    yield* Effect.gen(function* () {
+      const all = yield* U4KubectlClient.decodeJson(
+        U4KubectlClient.PodList,
+        yield* kubectl.run(profile, [
+          "get",
+          "pods",
+          "-l",
+          "app.kubernetes.io/part-of=u4-code",
+          "-o",
+          "json",
+        ]),
+      );
+      if (all.items.length >= profile.maxWorkspaces)
+        return yield* new U4WorkspaceError({ stage: "cluster" });
+      yield* save(workspace);
+      yield* kubectl.run(
+        profile,
+        ["create", "-f", "-"],
+        yield* U4KubectlClient.encodeJson(resources.pod),
+      );
+      const pod = (yield* pods(profile, workspace))[0];
+      if (!pod) return yield* new U4WorkspaceError({ stage: "cluster" });
+      workspace = yield* save({
+        ...workspace,
+        podUid: pod.metadata.uid,
+        node: pod.spec.nodeName ?? null,
+      });
+    }).pipe(allocation.withPermits(1));
     const current = yield* reconcile(profile, workspace);
     yield* transfer.install(profile, current);
     return yield* reconcile(profile, { ...current, snapshotInstalled: true });
   });
-  const launch = Effect.fn("U4KubernetesWorkspaceService.launch")(function* (
-    input: U4WorkspaceLaunchRequest,
-  ) {
-    const profile = yield* profileFor(input.profileId);
-    const ledger = yield* repository.read;
-    if (ledger.workspaces.some((w) => w.profileId === profile.id && w.name === input.name))
-      return yield* new U4WorkspaceError({ stage: "ownership" });
-    const all = yield* U4KubectlClient.decodeJson(
-      U4KubectlClient.PodList,
-      yield* kubectl.run(profile, [
-        "get",
-        "pods",
-        "-l",
-        "app.kubernetes.io/part-of=u4-code",
-        "-o",
-        "json",
-      ]),
-    );
-    if (all.items.length >= profile.maxWorkspaces)
-      return yield* new U4WorkspaceError({ stage: "cluster" });
-    const id = `ws-${(yield* random.uuidV4()).slice(0, 8)}`;
-    const snapshot = yield* transfer.snapshot(input.projectId, id);
-    const workspace: U4KubernetesWorkspace = {
-      id,
-      name: input.name,
-      profileId: profile.id,
-      projectId: input.projectId,
-      ownerId: ledger.ownerId,
-      generation: 1,
-      podName: `${id}-1`,
-      podUid: null,
-      pvcName: `${id}-data`,
-      serviceName: id,
-      baseSha: snapshot.baseSha,
-      snapshotSha256: snapshot.snapshotSha256,
-      snapshotInstalled: false,
-      ...(snapshot.sourceRemoteUrl ? { sourceRemoteUrl: snapshot.sourceRemoteUrl } : {}),
-      environmentId: null,
-      node: null,
-      route: null,
-      status: "provisioning",
-      serverRestarts: 0,
-      builderRestarts: 0,
-      storageGiB: profile.storageGiB,
-      remotePath: "/workspace/repo",
-    };
-    yield* save(workspace);
-    const resources = workspaceResources(profile, workspace);
-    yield* kubectl.run(
-      profile,
-      ["create", "-f", "-"],
-      yield* U4KubectlClient.encodeJson(resources.pvc),
-    );
-    yield* kubectl.run(
-      profile,
-      ["create", "-f", "-"],
-      yield* U4KubectlClient.encodeJson(resources.service),
-    );
-    return yield* createCompute(profile, workspace);
-  }, mutex.withPermits(1));
-  const lifecycle = Effect.fn("U4KubernetesWorkspaceService.lifecycle")(function* (
-    input: U4WorkspaceLifecycleRequest,
-  ) {
-    const { workspace, profile } = yield* owned(input.id);
-    if (input.action === "refresh" || input.action === "reattach")
-      return yield* Effect.gen(function* () {
-        const current = yield* reconcile(profile, workspace);
-        if (current.status === "ready" && !current.snapshotInstalled) {
-          yield* transfer.install(profile, current);
-          return yield* save({ ...current, snapshotInstalled: true });
-        }
-        return current;
-      }).pipe(
-        Effect.catchTags({
-          U4WorkspaceError: (error) =>
-            error.stage === "cluster"
-              ? save({ ...workspace, status: "unreachable" })
-              : Effect.fail(error),
-        }),
-      );
-    const found = yield* pods(profile, workspace);
-    if (input.action === "forget") {
-      if (found.length) return yield* new U4WorkspaceError({ stage: "replacement" });
-      yield* assertResource(profile, workspace, "service", workspace.serviceName);
-      yield* kubectl.run(profile, ["delete", "service", workspace.serviceName, "--wait=true"]);
+  const launch = Effect.fn("U4KubernetesWorkspaceService.launch")(
+    function* (input: U4WorkspaceLaunchRequest) {
+      const profile = yield* profileFor(input.profileId);
       const ledger = yield* repository.read;
-      yield* repository.save({
-        ...ledger,
-        workspaces: ledger.workspaces.filter((w) => w.id !== workspace.id),
-      });
-      return { ...workspace, status: "stopped" as const };
-    }
-    if (input.action === "stop") {
-      if (found.length)
-        yield* kubectl.run(profile, [
-          "delete",
-          "pod",
-          workspace.podName,
-          "--wait=true",
-          "--timeout=120s",
-        ]);
-      return yield* save({ ...workspace, status: "stopped", route: null });
-    }
-    if (!input.approveReplacement || found.length)
-      return yield* new U4WorkspaceError({ stage: "replacement" });
-    if (workspace.node) {
-      const node = yield* U4KubectlClient.decodeJson(
-        Schema.Struct({
-          status: Schema.Struct({
-            conditions: Schema.Array(Schema.Struct({ type: Schema.String, status: Schema.String })),
-          }),
-        }),
-        yield* kubectl.run(profile, ["get", "node", workspace.node, "-o", "json"]),
+      if (ledger.workspaces.some((w) => w.profileId === profile.id && w.name === input.name))
+        return yield* new U4WorkspaceError({ stage: "ownership" });
+      const id = `ws-${(yield* random.uuidV4()).slice(0, 8)}`;
+      const snapshot = yield* transfer.snapshot(input.projectId, id);
+      const workspace: U4KubernetesWorkspace = {
+        id,
+        name: input.name,
+        profileId: profile.id,
+        projectId: input.projectId,
+        ownerId: ledger.ownerId,
+        generation: 1,
+        podName: `${id}-1`,
+        podUid: null,
+        pvcName: `${id}-data`,
+        serviceName: id,
+        baseSha: snapshot.baseSha,
+        snapshotSha256: snapshot.snapshotSha256,
+        snapshotInstalled: false,
+        ...(snapshot.sourceRemoteUrl ? { sourceRemoteUrl: snapshot.sourceRemoteUrl } : {}),
+        environmentId: null,
+        node: null,
+        route: null,
+        status: "provisioning",
+        serverRestarts: 0,
+        builderRestarts: 0,
+        storageGiB: profile.storageGiB,
+        remotePath: "/workspace/repo",
+      };
+      yield* save(workspace);
+      const resources = workspaceResources(profile, workspace);
+      yield* kubectl.run(
+        profile,
+        ["create", "-f", "-"],
+        yield* U4KubectlClient.encodeJson(resources.pvc),
       );
-      if (!node.status.conditions.some((c) => c.type === "Ready" && c.status === "True"))
+      yield* kubectl.run(
+        profile,
+        ["create", "-f", "-"],
+        yield* U4KubectlClient.encodeJson(resources.service),
+      );
+      return yield* locked(workspace.id, createCompute(profile, workspace));
+    },
+    (effect, input) => locked(`launch:${input.profileId}:${input.name}`, effect),
+  );
+  const lifecycle = Effect.fn("U4KubernetesWorkspaceService.lifecycle")(
+    function* (input: U4WorkspaceLifecycleRequest) {
+      const { workspace, profile } = yield* owned(input.id);
+      if (input.action === "restore") {
+        if (!workspace.forgottenAt || (yield* pods(profile, workspace)).length)
+          return yield* new U4WorkspaceError({ stage: "replacement" });
+        yield* assertResource(profile, workspace, "pvc", workspace.pvcName);
+        const existing = yield* kubectl.run(profile, [
+          "get",
+          "service",
+          workspace.serviceName,
+          "--ignore-not-found",
+          "-o",
+          "json",
+        ]);
+        if (existing.trim())
+          yield* assertResource(profile, workspace, "service", workspace.serviceName);
+        else
+          yield* kubectl.run(
+            profile,
+            ["create", "-f", "-"],
+            yield* U4KubectlClient.encodeJson(workspaceResources(profile, workspace).service),
+          );
+        const { forgottenAt: _, ...restored } = workspace;
+        return yield* save({ ...restored, status: "stopped", route: null });
+      }
+      if (workspace.forgottenAt) return yield* new U4WorkspaceError({ stage: "ownership" });
+      if (input.action === "refresh" || input.action === "reattach")
+        return yield* Effect.gen(function* () {
+          const current = yield* reconcile(profile, workspace);
+          if (current.status === "ready" && !current.snapshotInstalled) {
+            yield* transfer.install(profile, current);
+            return yield* save({ ...current, snapshotInstalled: true });
+          }
+          return current;
+        }).pipe(
+          Effect.catchTags({
+            U4WorkspaceError: (error) =>
+              error.stage === "cluster"
+                ? save({ ...workspace, status: "unreachable", route: null })
+                : Effect.fail(error),
+          }),
+        );
+      const found = yield* pods(profile, workspace);
+      yield* connections.stop(workspace.id);
+      if (input.action === "forget") {
+        if (found.length) return yield* new U4WorkspaceError({ stage: "replacement" });
+        yield* assertResource(profile, workspace, "service", workspace.serviceName);
+        yield* kubectl.run(profile, ["delete", "service", workspace.serviceName, "--wait=true"]);
+        return yield* save({
+          ...workspace,
+          forgottenAt: DateTime.formatIso(yield* DateTime.now),
+          status: "stopped",
+          route: null,
+        });
+      }
+      if (input.action === "stop") {
+        if (found.length)
+          yield* kubectl.run(profile, [
+            "delete",
+            "pod",
+            workspace.podName,
+            "--wait=true",
+            "--timeout=120s",
+          ]);
+        return yield* save({ ...workspace, status: "stopped", route: null });
+      }
+      if (!input.approveReplacement || found.length)
         return yield* new U4WorkspaceError({ stage: "replacement" });
-    }
-    yield* assertResource(profile, workspace, "pvc", workspace.pvcName);
-    const next = yield* save({
-      ...workspace,
-      generation: workspace.generation + 1,
-      podName: `${workspace.id}-${workspace.generation + 1}`,
-      podUid: null,
-      status: "provisioning",
-      route: null,
-    });
-    return yield* createCompute(profile, next);
-  }, mutex.withPermits(1));
-  const connect = Effect.fn("U4KubernetesWorkspaceService.connect")(function* (input: {
-    readonly id: string;
-  }) {
-    const { workspace, profile } = yield* owned(input.id);
-    const current = yield* reconcile(profile, workspace);
-    if (current.status !== "ready") return yield* new U4WorkspaceError({ stage: "connection" });
-    return yield* connections.pair(profile, current);
-  }, mutex.withPermits(1));
-  const exportWorkspace = Effect.fn("U4KubernetesWorkspaceService.export")(function* (
-    input: U4WorkspaceExportRequest,
-  ) {
-    const { workspace, profile } = yield* owned(input.id);
-    const current = yield* reconcile(profile, workspace);
-    if (current.status !== "ready") return yield* new U4WorkspaceError({ stage: "connection" });
-    return yield* transfer.export(profile, current, input);
-  }, mutex.withPermits(1));
+      if (workspace.node) {
+        const node = yield* U4KubectlClient.decodeJson(
+          Schema.Struct({
+            status: Schema.Struct({
+              conditions: Schema.Array(
+                Schema.Struct({ type: Schema.String, status: Schema.String }),
+              ),
+            }),
+          }),
+          yield* kubectl.run(profile, ["get", "node", workspace.node, "-o", "json"]),
+        );
+        if (!node.status.conditions.some((c) => c.type === "Ready" && c.status === "True"))
+          return yield* new U4WorkspaceError({ stage: "replacement" });
+      }
+      yield* assertResource(profile, workspace, "pvc", workspace.pvcName);
+      const next: U4KubernetesWorkspace = {
+        ...workspace,
+        generation: workspace.generation + 1,
+        podName: `${workspace.id}-${workspace.generation + 1}`,
+        podUid: null,
+        status: "provisioning",
+        route: null,
+      };
+      return yield* createCompute(profile, next);
+    },
+    (effect, input) => locked(input.id, effect),
+  );
+  const connect = Effect.fn("U4KubernetesWorkspaceService.connect")(
+    function* (
+      input: {
+        readonly id: string;
+        readonly transport?: "tailnet" | "forward" | "stop-forward";
+      },
+      localClient = false,
+    ) {
+      const { workspace, profile } = yield* owned(input.id);
+      if (input.transport === "stop-forward") {
+        yield* connections.stop(workspace.id);
+        return { environmentId: workspace.environmentId ?? "", route: null, pairingCode: "" };
+      }
+      const current = yield* reconcile(profile, workspace);
+      if (current.status !== "ready") return yield* new U4WorkspaceError({ stage: "connection" });
+      return yield* connections.pair(profile, current, input.transport ?? "tailnet", localClient);
+    },
+    (effect, input) => locked(input.id, effect),
+  );
+  const exportWorkspace = Effect.fn("U4KubernetesWorkspaceService.export")(
+    function* (input: U4WorkspaceExportRequest) {
+      const { workspace, profile } = yield* owned(input.id);
+      const current = yield* reconcile(profile, workspace);
+      if (current.status !== "ready") return yield* new U4WorkspaceError({ stage: "connection" });
+      return yield* transfer.export(profile, current, input);
+    },
+    (effect, input) => locked(input.id, effect),
+  );
   return U4KubernetesWorkspaceService.of({
     list: Effect.gen(function* () {
       return {
         profiles: yield* repository.profiles,
-        workspaces: (yield* repository.read).workspaces,
+        workspaces: yield* Effect.forEach((yield* repository.read).workspaces, (w) =>
+          connections.expiresAt(w.id).pipe(
+            Effect.map((bootstrapExpiresAt) => ({
+              ...w,
+              ...(bootstrapExpiresAt ? { bootstrapExpiresAt } : {}),
+            })),
+          ),
+        ),
       };
-    }).pipe(mutex.withPermits(1)),
+    }),
     launch,
     lifecycle,
     connect,

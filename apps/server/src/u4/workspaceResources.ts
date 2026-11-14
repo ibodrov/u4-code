@@ -13,6 +13,7 @@ export function workspaceResources(profile: U4ClusterProfile, workspace: U4Kuber
     allowPrivilegeEscalation: false,
     capabilities: { drop: ["ALL"] },
     runAsNonRoot: true,
+    readOnlyRootFilesystem: true,
   };
   const common = { securityContext, imagePullPolicy: "Always" };
   const mounts = [
@@ -64,6 +65,7 @@ export function workspaceResources(profile: U4ClusterProfile, workspace: U4Kuber
           runAsUser: 1000,
           runAsGroup: 1000,
           fsGroup: 1000,
+          fsGroupChangePolicy: "OnRootMismatch",
           seccompProfile: { type: "RuntimeDefault" },
         },
         volumes: [
@@ -77,12 +79,7 @@ export function workspaceResources(profile: U4ClusterProfile, workspace: U4Kuber
             ...common,
             name: "prepare",
             image: profile.builderImage,
-            command: [
-              "node",
-              "-e",
-              "const f=require('fs'); for(const p of ['workspace','cache','state','provider']) f.mkdirSync('/data/'+p,{recursive:true}); f.writeFileSync('/data/state/generation',process.env.GENERATION);",
-            ],
-            env: [{ name: "GENERATION", value: String(workspace.generation) }],
+            command: ["node", "/opt/u4/prepare-volume.mjs", String(workspace.generation)],
             volumeMounts: [{ name: "data", mountPath: "/data" }],
             resources: {
               requests: { cpu: "100m", memory: "64Mi" },
@@ -98,7 +95,7 @@ export function workspaceResources(profile: U4ClusterProfile, workspace: U4Kuber
             env: [{ name: "U4_WORKSPACE_GENERATION", value: String(workspace.generation) }],
             ports: [{ containerPort: 4773 }],
             volumeMounts: [
-              ...mounts,
+              ...mounts.filter((m) => m.mountPath !== "/cache"),
               { name: "server-tmp", mountPath: "/tmp" },
               { name: "data", mountPath: "/state", subPath: "state" },
               { name: "data", mountPath: "/provider", subPath: "provider" },
@@ -113,7 +110,16 @@ export function workspaceResources(profile: U4ClusterProfile, workspace: U4Kuber
             ...common,
             name: "builder",
             image: profile.builderImage,
-            volumeMounts: [...mounts, { name: "builder-tmp", mountPath: "/tmp" }],
+            securityContext: { ...securityContext, runAsUser: 1001 },
+            volumeMounts: [
+              ...mounts.map((m) =>
+                m.mountPath === "/workspace"
+                  ? { ...m, readOnly: true, recursiveReadOnly: "Enabled", mountPropagation: "None" }
+                  : m,
+              ),
+              { name: "data", mountPath: "/build", subPath: "build" },
+              { name: "builder-tmp", mountPath: "/tmp" },
+            ],
             resources: {
               requests: { cpu: "2", memory: "6Gi" },
               limits: { cpu: "3", memory: "9Gi" },
