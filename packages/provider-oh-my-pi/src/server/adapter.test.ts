@@ -15,6 +15,9 @@ import {
   type ChatAttachment,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
+import * as Exit from "effect/Exit";
+import { makeProviderFailure } from "@t3tools/provider-core/server/failure";
 import * as DateTime from "effect/DateTime";
 import * as Stream from "effect/Stream";
 import * as Queue from "effect/Queue";
@@ -155,6 +158,37 @@ const startTurn = Effect.fnUntraced(function* (
 });
 
 describe("oh-my-pi native adapter", () => {
+  it.effect("explains an unavailable model through the normalized turn-start failure", () =>
+    Effect.gen(function* () {
+      const fake = yield* makeFakeOmp();
+      const { runtime } = yield* openRuntime(fake);
+      const providerThread = yield* runtime.ensureThread({
+        threadId: THREAD_ID,
+        modelSelection: modelSelection(),
+        runtimePolicy,
+      });
+      fake.heldRequests.add("set_model");
+      const turn = yield* startTurn(runtime, providerThread, "openai-codex/missing").pipe(
+        Effect.forkScoped,
+      );
+      const request = yield* fake.takeRequest("set_model");
+      yield* fake.emit({
+        type: "response",
+        id: request.id,
+        command: "set_model",
+        success: false,
+        error: "Model not found",
+      });
+      const result = yield* Fiber.await(turn);
+      assert.isTrue(Exit.isFailure(result));
+      if (!Exit.isFailure(result)) return;
+      assert.equal(
+        makeProviderFailure({ cause: result.cause }).message,
+        'Model "openai-codex/missing" is not available in oh-my-pi. Check omp sign-in and enabledModels, then choose an available model.',
+      );
+    }).pipe(Effect.scoped, Effect.provide(layerTest)),
+  );
+
   it.effect("replays real multi-turn output and retains the native handle after resume", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;

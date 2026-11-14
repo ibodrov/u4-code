@@ -9,6 +9,7 @@ import { readToolOutputImage } from "@t3tools/shared/toolOutput";
 import * as Predicate from "effect/Predicate";
 import {
   ProviderDriverKind,
+  ProviderSetupError,
   type ChatAttachment,
   type ModelSelection,
   type OrchestrationV2ExecutionNode,
@@ -759,7 +760,20 @@ export const makeOmpAdapterV2 = Effect.fn("makeOmpAdapterV2")(function* (
         };
 
         const request = (record: OmpRpcRecord, timeoutMs = OMP_REQUEST_TIMEOUT_MS) =>
-          connection.request(record, timeoutMs);
+          connection.request(record, timeoutMs).pipe(
+            Effect.mapError((cause) =>
+              record.type === "set_model" &&
+              cause._tag === "OmpRpcError" &&
+              cause.detail === "Model not found"
+                ? new ProviderSetupError({
+                    instanceId: options.instanceId,
+                    operation: "set-model",
+                    detail: `Model "${recordString(record, "provider")}/${recordString(record, "modelId")}" is not available in oh-my-pi. Check omp sign-in and enabledModels, then choose an available model.`,
+                    cause,
+                  })
+                : cause,
+            ),
+          );
 
         const nonNegativeInteger = (input: unknown, key: string): number | undefined => {
           const value = recordNumber(input, key);

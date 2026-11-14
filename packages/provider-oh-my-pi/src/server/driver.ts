@@ -105,6 +105,33 @@ export const OmpDriver: ProviderDriver<OmpSettings, OmpDriverEnv, Path.Path> = {
           }),
       ),
     );
+    const refreshModels = Effect.fn("OmpDriver.refreshModels")(function* () {
+      if (!config.enabled) return;
+      inventory = yield* discoverOmp(config, environment, host.paths.cwd).pipe(
+        Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
+        Effect.mapError(
+          (cause) =>
+            new ProviderDriverError({
+              driver: DRIVER,
+              instanceId: input.instanceId,
+              detail: "Could not refresh oh-my-pi models",
+              cause,
+            }),
+        ),
+      );
+      yield* snapshot.refresh.pipe(
+        Effect.mapError(
+          (cause) =>
+            new ProviderDriverError({
+              driver: DRIVER,
+              instanceId: input.instanceId,
+              detail: "Could not refresh oh-my-pi snapshot",
+              cause,
+            }),
+        ),
+      );
+    });
+    yield* refreshModels().pipe(Effect.ignore({ log: true }));
     return {
       instanceId: input.instanceId,
       driverKind: DRIVER,
@@ -112,32 +139,7 @@ export const OmpDriver: ProviderDriver<OmpSettings, OmpDriverEnv, Path.Path> = {
       displayName: input.displayName,
       accentColor: input.accentColor,
       enabled: input.enabled,
-      refreshModels: Effect.fn("OmpDriver.refreshModels")(function* () {
-        if (!config.enabled) return;
-        inventory = yield* discoverOmp(config, environment, host.paths.cwd).pipe(
-          Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
-          Effect.mapError(
-            (cause) =>
-              new ProviderDriverError({
-                driver: DRIVER,
-                instanceId: input.instanceId,
-                detail: "Could not refresh oh-my-pi models",
-                cause,
-              }),
-          ),
-        );
-        yield* snapshot.refresh.pipe(
-          Effect.mapError(
-            (cause) =>
-              new ProviderDriverError({
-                driver: DRIVER,
-                instanceId: input.instanceId,
-                detail: "Could not refresh oh-my-pi snapshot",
-                cause,
-              }),
-          ),
-        );
-      }),
+      refreshModels,
       snapshot,
       orchestrationAdapter,
       textGeneration,
