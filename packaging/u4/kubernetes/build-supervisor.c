@@ -71,7 +71,7 @@ int main(int argc, char **argv) {
     if (event.ssi_signo == SIGTERM || event.ssi_signo == SIGINT) {
       stopping = 1;
       cancel_signal = (int)event.ssi_signo;
-      /* Deliver cancellation to the original child while it remains unreaped. */
+      /* Request cancellation; the next cleanup scan escalates without a grace interval. */
       if (!main_exited) kill(main_pid, (int)event.ssi_signo);
     }
   }
