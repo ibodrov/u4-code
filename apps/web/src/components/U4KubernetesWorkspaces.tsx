@@ -28,6 +28,7 @@ import {
   canUseKubernetesBootstrap,
   suggestWorkspaceName,
   validateWorkspaceName,
+  workspaceNameValue,
   type WorkspaceNameProblem,
 } from "./U4KubernetesWorkspaces.logic";
 import { useEnvironmentHttpBaseUrl, usePrimaryEnvironmentId } from "~/state/environments";
@@ -149,7 +150,13 @@ type LaunchState =
       readonly projectTitle: string;
       readonly clusterLabel: string;
     }
-  | { readonly phase: "failed"; readonly notice: FailureNotice }
+  | {
+      readonly phase: "failed";
+      readonly notice: FailureNotice;
+      readonly name: string;
+      readonly projectId: ProjectId;
+      readonly profileId: string;
+    }
   | {
       readonly phase: "created";
       readonly workspace: U4KubernetesWorkspace;
@@ -369,7 +376,16 @@ function CreateWorkspaceForm({
     project && profile
       ? suggestWorkspaceName({ projectTitle: project.title, profileId: profile.id, workspaces })
       : "";
-  const name = nameDraft ?? suggestion;
+  const name =
+    project && profile
+      ? workspaceNameValue({
+          draft: nameDraft,
+          failed: launchState.phase === "failed" ? launchState : null,
+          projectId: project.id,
+          profileId: profile.id,
+          suggestion,
+        })
+      : (nameDraft ?? suggestion);
   const nameProblem = profile
     ? validateWorkspaceName({ name, profileId: profile.id, workspaces })
     : null;
@@ -404,9 +420,11 @@ function CreateWorkspaceForm({
     } else if (isAtomCommandInterrupted(result)) {
       setLaunchState({ phase: "idle" });
     } else {
-      setNameDraft(name);
       setLaunchState({
         phase: "failed",
+        name,
+        projectId: project.id,
+        profileId: profile.id,
         notice: describeLaunchFailure(result.cause, {
           name,
           projectTitle: project.title,
@@ -538,11 +556,11 @@ function CreateWorkspaceForm({
               className={nameMessage ? "text-destructive-foreground" : undefined}
             >
               {nameMessage ??
-                (nameDraft === null
-                  ? `Suggested from ${project.title}. You can change it.`
-                  : name === suggestion
-                    ? `Suggested from ${project.title}.`
-                    : "Lowercase letters, numbers and hyphens.")}
+                (name !== suggestion
+                  ? "Lowercase letters, numbers and hyphens."
+                  : nameDraft === null
+                    ? `Suggested from ${project.title}. You can change it.`
+                    : `Suggested from ${project.title}.`)}
             </span>
             {nameProblem?.kind === "taken" ? (
               <Button

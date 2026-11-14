@@ -63,7 +63,7 @@ Fresh cluster pulls must work using node-provided pull credentials.
 
 Write `<U4 home>/kubernetes/profiles.json` on the managing environment, then restart
 that manager so it advertises the capability. Image references must be pinned by digest
-(`<registry host>[:<port>]/<path>@sha256:<64 hex digits>`); tags are refused:
+(`<registry host>[:<port>]/<path>[:<tag>]@sha256:<64 hex digits>`); a tag alone is refused:
 
 ```json
 [

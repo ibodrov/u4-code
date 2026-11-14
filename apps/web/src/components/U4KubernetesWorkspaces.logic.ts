@@ -81,3 +81,26 @@ export function validateWorkspaceName(input: {
     alternative: nextFreeName(name, namesOnProfile(input.workspaces, input.profileId)),
   };
 }
+
+/**
+ * The user's edit always wins. A name that just failed stays only while the same project and
+ * cluster are selected, so a retry can't move past a record the failure may have saved; an
+ * untouched suggestion otherwise keeps following the selection.
+ */
+export function workspaceNameValue(input: {
+  readonly draft: string | null;
+  readonly failed: {
+    readonly name: string;
+    readonly projectId: string;
+    readonly profileId: string;
+  } | null;
+  readonly projectId: string;
+  readonly profileId: string;
+  readonly suggestion: string;
+}): string {
+  if (input.draft !== null) return input.draft;
+  const { failed } = input;
+  return failed?.projectId === input.projectId && failed.profileId === input.profileId
+    ? failed.name
+    : input.suggestion;
+}

@@ -4,6 +4,7 @@ import {
   canUseKubernetesBootstrap,
   suggestWorkspaceName,
   validateWorkspaceName,
+  workspaceNameValue,
 } from "./U4KubernetesWorkspaces.logic";
 it("shows local bootstrap only for local web or the desktop's managed primary backend", () => {
   for (const scheme of [PRODUCT_URL_SCHEME, PRODUCT_DEV_URL_SCHEME]) {
@@ -88,4 +89,22 @@ it("validates workspace names with the server's resource-name rule and per-clust
   expect(validate("payments-api-2")).toMatchObject({ kind: "taken", archived: true });
   expect(validate("payments-api", "lab")).toBeNull();
   expect(validate("a".repeat(63))).toBeNull();
+});
+
+it("pins a failed name only for its selection and never turns a suggestion into an edit", () => {
+  const failed = { name: "payments-api", projectId: "p1", profileId: "local" };
+  const value = (overrides: Partial<Parameters<typeof workspaceNameValue>[0]>) =>
+    workspaceNameValue({
+      draft: null,
+      failed,
+      projectId: "p1",
+      profileId: "local",
+      suggestion: "payments-api-2",
+      ...overrides,
+    });
+  expect(value({})).toBe("payments-api");
+  expect(value({ projectId: "p2", suggestion: "billing-service" })).toBe("billing-service");
+  expect(value({ profileId: "lab", suggestion: "payments-api-lab" })).toBe("payments-api-lab");
+  expect(value({ failed: null })).toBe("payments-api-2");
+  expect(value({ draft: "mine", projectId: "p2" })).toBe("mine");
 });

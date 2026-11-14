@@ -4,14 +4,17 @@ import { ProjectId, TrimmedNonEmptyString } from "./baseSchemas.ts";
 export const U4_RESOURCE_NAME_PATTERN = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/;
 const ResourceName = Schema.String.check(Schema.isPattern(U4_RESOURCE_NAME_PATTERN));
 const HOST_LABEL = "[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?";
+const REGISTRY_HOST =
+  `(?:localhost|${HOST_LABEL}(?:\\.${HOST_LABEL})+|${HOST_LABEL}(?:\\.${HOST_LABEL})*:[0-9]{1,5}` +
+  `|\\[[0-9A-Fa-f:]+\\](?::[0-9]{1,5})?)`;
 const REPOSITORY_PART = "[a-z0-9]+(?:(?:[._]|__|-+)[a-z0-9]+)*";
-// Images must be pinned by digest. The explicit registry host needs a dot, a port or localhost,
-// so a bare path is never resolved against a default registry.
+// Images must be pinned by digest; an optional tag is only a label. The explicit registry host
+// needs a dot, a port, localhost or brackets, so a bare path never means a default registry.
 const DigestImage = Schema.String.check(
   Schema.isPattern(
     new RegExp(
-      `^(?:localhost|${HOST_LABEL}(?:\\.${HOST_LABEL})+|${HOST_LABEL}(?:\\.${HOST_LABEL})*:[0-9]{1,5})` +
-        `(?:/${REPOSITORY_PART})+@sha256:[a-f0-9]{64}$`,
+      `^${REGISTRY_HOST}(?:/${REPOSITORY_PART})+(?::[A-Za-z0-9_][A-Za-z0-9_.-]{0,127})?` +
+        "@sha256:[a-f0-9]{64}$",
     ),
   ),
 );
