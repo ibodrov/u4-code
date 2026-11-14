@@ -1,3 +1,4 @@
+import * as U4KubernetesWorkspaceService from "./u4/U4KubernetesWorkspaceService.ts";
 import { OrchestrationDispatchCommandError } from "@t3tools/contracts";
 // @effect-diagnostics-next-line nodeBuiltinImport:off -- A synchronous digest inside the pure provider mapping.
 import * as NodeCrypto from "node:crypto";
@@ -1472,6 +1473,7 @@ export const layerWsRpc = (
       const reviewGuides = yield* PullRequestReviewGuideService.PullRequestReviewGuideService;
       const pullRequestSync = yield* PullRequestSyncReactor.PullRequestSyncReactor;
       const deviceService = yield* DeviceService.DeviceService;
+      const u4Workspaces = yield* U4KubernetesWorkspaceService.U4KubernetesWorkspaceService;
       const deviceHostContext =
         yield* Effect.context<Effect.Services<ReturnType<typeof remoteSshDeviceHosts>>>();
       const orchestrationEngine = yield* Orchestrator.OrchestratorV2;
@@ -3213,6 +3215,11 @@ export const layerWsRpc = (
         [WS_METHODS.previewReportProfiles]: (input) => reportProfiles(input),
         [WS_METHODS.previewReportStatus]: (input) => previewManager.reportStatus(input),
         [WS_METHODS.subscribePreviewEvents]: (_input) => previewManager.events,
+        [WS_METHODS.u4WorkspaceList]: () => u4Workspaces.list,
+        [WS_METHODS.u4WorkspaceLaunch]: (input) => u4Workspaces.launch(input),
+        [WS_METHODS.u4WorkspaceLifecycle]: (input) => u4Workspaces.lifecycle(input),
+        [WS_METHODS.u4WorkspaceConnect]: (input) => u4Workspaces.connect(input),
+        [WS_METHODS.u4WorkspaceExport]: (input) => u4Workspaces.export(input),
         [WS_METHODS.deviceConfigure]: (input) => deviceService.configure(input),
         [WS_METHODS.deviceTestHost]: (input) => deviceService.testHost(input),
         [WS_METHODS.deviceEasAccount]: (input) => deviceService.easAccount(input),

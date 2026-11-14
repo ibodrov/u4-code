@@ -470,3 +470,42 @@ whichever connection you reach it through.
 
 Switch **Local environment** back on in the same place to restart with your previous local
 settings.
+
+## U4 Kubernetes workspaces
+
+U4 can run a named project workspace in a configured Kubernetes cluster. In
+**Settings → Environments → Kubernetes workspaces**, select the cluster, registered
+source project and workspace name. New-thread run-context menus also offer
+**Kubernetes workspace**. Setup requires a cluster profile on the managing
+environment; see [Kubernetes setup](../../packaging/u4/kubernetes/README.md).
+
+Creation snapshots the clean committed Git HEAD into an independent remote repository.
+Dirty checkouts, submodules, LFS and tracked `.env` files are refused. Ignored files
+and desktop credentials are not copied. Pair the workspace as an ordinary environment,
+then create its threads with separate worktrees. Heavy Maven/npm commands must use
+`u4-build -- <command> [arguments]`; commands that bypass it share the server's budget.
+
+The tailnet Service provides HTTP. An HTTPS-hosted client needs an HTTPS endpoint;
+use desktop or the workspace's own HTTP page until one is configured. A manager's
+loopback port-forward is for local bootstrap and recovery and is never a remote route.
+Mobile can pair with the ordinary environment; cluster management is desktop/web only.
+
+Container crashes restart automatically. Status refresh and reattachment inspect the
+existing Pod; a network outage never creates replacement compute. Stopping deletes
+compute and retains the repository, worktrees, environment identity, database,
+provider home and caches. Bringing it back requires explicit approval, the old Pod's
+absence, and a healthy previous node. U4 refuses replacement when it cannot fence the
+old instance. Interrupted turns do not automatically continue after a server restart.
+Schedules remain environment-local and are not disabled by this recovery setting;
+no schedules are imported and a stopped workspace is never automatically awakened.
+
+Returning a result requires its branch and exact commit SHA. U4 verifies the bundle,
+base ancestry and selected checkpoint refs, and imports into isolated staging on the
+managing environment. It writes a local PR draft and diff without changing the source
+checkout. This MVP has no Git/forge publication action. Publishing later requires
+separate approval of the exact SHA and destination.
+
+Forgetting a stopped registration removes its Service and local management record,
+but retains its PVC. Keep the workspace ID and PVC name for manual recovery. Retained
+storage is not a backup; deleting a PVC and reclaiming its retained volume are separate,
+destructive administrator operations.

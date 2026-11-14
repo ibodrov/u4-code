@@ -155,6 +155,10 @@ describe("command permissions", () => {
   it.effect.each([
     { method: WS_METHODS.serverRunStorageCleanup, scope: AuthSettingsWriteScope },
     { method: WS_METHODS.serverReclaimDatabaseSpace, scope: AuthEnvironmentMaintainScope },
+    { method: WS_METHODS.u4WorkspaceLaunch, scope: AuthEnvironmentMaintainScope },
+    { method: WS_METHODS.u4WorkspaceLifecycle, scope: AuthEnvironmentMaintainScope },
+    { method: WS_METHODS.u4WorkspaceConnect, scope: AuthEnvironmentMaintainScope },
+    { method: WS_METHODS.u4WorkspaceExport, scope: AuthEnvironmentMaintainScope },
   ])("requires the destination $scope grant for $method", ({ method, scope }) =>
     Effect.gen(function* () {
       const registry = yield* setup;

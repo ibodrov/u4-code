@@ -11,6 +11,12 @@ type WsRpcMethod = RpcGroup.Rpcs<typeof WsRpcGroup>["_tag"];
 
 // Trace queries and dashboards depend on these labels, including deviations from method prefixes.
 const RPC_AGGREGATES = {
+  [WS_METHODS.u4WorkspaceList]: "u4-kubernetes",
+  [WS_METHODS.u4WorkspaceLaunch]: "u4-kubernetes",
+  [WS_METHODS.u4WorkspaceLifecycle]: "u4-kubernetes",
+  [WS_METHODS.u4WorkspaceConnect]: "u4-kubernetes",
+  [WS_METHODS.u4WorkspaceExport]: "u4-kubernetes",
+
   [ORCHESTRATION_V2_WS_METHODS.dispatchCommand]: "orchestrationV2",
   [ORCHESTRATION_V2_WS_METHODS.getWorkflowScript]: "orchestration",
   [ORCHESTRATION_V2_WS_METHODS.getNativeChildWork]: "orchestration",

@@ -32,6 +32,14 @@ import * as RpcAuthorization from "./RpcAuthorization.ts";
 
 describe("RPC authorization scopes", () => {
   it("declares exactly one scope for every RPC in the server group", () => {
+    for (const method of [
+      WS_METHODS.u4WorkspaceList,
+      WS_METHODS.u4WorkspaceLaunch,
+      WS_METHODS.u4WorkspaceLifecycle,
+      WS_METHODS.u4WorkspaceConnect,
+      WS_METHODS.u4WorkspaceExport,
+    ])
+      expect(requiredScopeForRpcMethod(method)).toBe(AuthEnvironmentMaintainScope);
     expect(new Set(Object.keys(RPC_REQUIRED_SCOPES))).toEqual(new Set(WsRpcGroup.requests.keys()));
   });
 

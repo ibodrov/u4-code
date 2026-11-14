@@ -1,4 +1,15 @@
 import {
+  U4WorkspaceLaunchRequest,
+  U4WorkspaceLifecycleRequest,
+  U4WorkspaceConnectRequest,
+  U4WorkspaceConnection,
+  U4WorkspaceExportRequest,
+  U4WorkspaceExport,
+  U4WorkspaceList,
+  U4KubernetesWorkspace,
+  U4WorkspaceError,
+} from "./u4Kubernetes.ts";
+import {
   OrchestrationV2SearchThreadError,
   OrchestrationV2SearchThreadInput,
   OrchestrationV2SearchThreadResult,
@@ -415,6 +426,11 @@ import { VcsError } from "./vcs.ts";
 import { Project, ProjectMutation, ProjectMutationError } from "./project.ts";
 
 export const WS_METHODS = {
+  u4WorkspaceList: "u4.workspace.list",
+  u4WorkspaceLaunch: "u4.workspace.launch",
+  u4WorkspaceLifecycle: "u4.workspace.lifecycle",
+  u4WorkspaceConnect: "u4.workspace.connect",
+  u4WorkspaceExport: "u4.workspace.export",
   projectsListEntries: "projects.listEntries",
   projectsListIgnoredFiles: "projects.listIgnoredFiles",
   projectsReadFile: "projects.readFile",
@@ -2102,7 +2118,38 @@ export class RpcScopeAuthorization extends RpcMiddleware.Service<RpcScopeAuthori
   { error: EnvironmentAuthorizationError },
 ) {}
 
+const WsU4WorkspaceListRpc = Rpc.make(WS_METHODS.u4WorkspaceList, {
+  payload: Schema.Struct({}),
+  success: U4WorkspaceList,
+  error: Schema.Union([U4WorkspaceError, EnvironmentAuthorizationError]),
+});
+const WsU4WorkspaceLaunchRpc = Rpc.make(WS_METHODS.u4WorkspaceLaunch, {
+  payload: U4WorkspaceLaunchRequest,
+  success: U4KubernetesWorkspace,
+  error: Schema.Union([U4WorkspaceError, EnvironmentAuthorizationError]),
+});
+const WsU4WorkspaceLifecycleRpc = Rpc.make(WS_METHODS.u4WorkspaceLifecycle, {
+  payload: U4WorkspaceLifecycleRequest,
+  success: U4KubernetesWorkspace,
+  error: Schema.Union([U4WorkspaceError, EnvironmentAuthorizationError]),
+});
+const WsU4WorkspaceConnectRpc = Rpc.make(WS_METHODS.u4WorkspaceConnect, {
+  payload: U4WorkspaceConnectRequest,
+  success: U4WorkspaceConnection,
+  error: Schema.Union([U4WorkspaceError, EnvironmentAuthorizationError]),
+});
+const WsU4WorkspaceExportRpc = Rpc.make(WS_METHODS.u4WorkspaceExport, {
+  payload: U4WorkspaceExportRequest,
+  success: U4WorkspaceExport,
+  error: Schema.Union([U4WorkspaceError, EnvironmentAuthorizationError]),
+});
+
 export const WsRpcGroup = RpcGroup.make(
+  WsU4WorkspaceListRpc,
+  WsU4WorkspaceLaunchRpc,
+  WsU4WorkspaceLifecycleRpc,
+  WsU4WorkspaceConnectRpc,
+  WsU4WorkspaceExportRpc,
   WsGuestShareCreateRpc,
   WsServerProbeRpc,
   WsServerGetConfigRpc,

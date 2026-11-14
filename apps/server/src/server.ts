@@ -1,3 +1,4 @@
+import * as U4KubernetesWorkspaceService from "./u4/U4KubernetesWorkspaceService.ts";
 import * as ProviderEventLoggers from "@t3tools/provider-core/server/ProviderEventLoggers";
 import type { RelayManagedEndpointRuntimeConfig } from "@t3tools/contracts/relay";
 import * as Random from "effect/Random";
@@ -697,6 +698,7 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
 ).pipe(
   Layer.provideMerge(layerOrchestrationApplication),
   Layer.provideMerge(RuntimeLayer.layerEventInfrastructure),
+  Layer.provideMerge(U4KubernetesWorkspaceService.layer.pipe(Layer.provide(ProjectStore.layer))),
   Layer.provideMerge(Layer.merge(ProjectStore.layer, ThreadSearch.layer)),
   Layer.provideMerge(SecretCheck.layer),
   Layer.provideMerge(SecretResolver.layer),

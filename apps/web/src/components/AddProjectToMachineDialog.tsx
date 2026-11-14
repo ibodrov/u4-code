@@ -1,3 +1,4 @@
+import { KubernetesWorkspaceDialogHost, openKubernetesWorkspace } from "./U4KubernetesWorkspaces";
 import { useParams } from "@tanstack/react-router";
 import { scopeProjectRef } from "@t3tools/client-runtime/environment";
 import {
@@ -87,7 +88,12 @@ function close() {
 export function AddProjectToMachineDialogHost() {
   const request = useRequest((state) => state.request);
   const session = useRequest((state) => state.session);
-  return request ? <AddProjectToMachineDialog key={session} request={request} /> : null;
+  return (
+    <>
+      <KubernetesWorkspaceDialogHost />
+      {request ? <AddProjectToMachineDialog key={session} request={request} /> : null}
+    </>
+  );
 }
 
 function AddProjectToMachineDialog({ request }: { request: AddProjectToMachineRequest }) {
@@ -216,6 +222,19 @@ function AddProjectToMachineDialog({ request }: { request: AddProjectToMachineRe
       }}
     >
       <DialogPopup className="sm:max-w-xl">
+        {source?.serverConfig?.environment.capabilities.u4Kubernetes === true ? (
+          <div className="p-4">
+            <Button
+              variant="outline"
+              onClick={() => {
+                close();
+                openKubernetesWorkspace(request.projectRef);
+              }}
+            >
+              Use a Kubernetes workspace
+            </Button>
+          </div>
+        ) : null}
         <form
           className="flex min-h-0 flex-col"
           onSubmit={(event) => {

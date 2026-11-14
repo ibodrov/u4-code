@@ -1,3 +1,4 @@
+import { U4KubernetesWorkspaces } from "../U4KubernetesWorkspaces";
 import { SessionPermissions } from "./SessionPermissions";
 import { useSearch } from "@tanstack/react-router";
 import { ChevronRightIcon, EllipsisIcon } from "lucide-react";
@@ -1645,6 +1646,7 @@ function ConnectionsSettingsContent({
           }}
         />
       ) : null}
+      <U4KubernetesWorkspaces />
       {peerLinkHosts.map((environment, index) => (
         <LinkedEnvironmentsSettings
           key={environment.environmentId}
