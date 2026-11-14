@@ -11,10 +11,18 @@ export function prepareVolume(root, generation) {
   }
   NodeFS.chmodSync(`${root}/provider`, 0o700);
   NodeFS.chmodSync(`${root}/state`, 0o700);
+  const home = `${root}/cache/home`;
+  const current = NodeFS.lstatSync(home, { throwIfNoEntry: false });
+  if (
+    current &&
+    (!current.isDirectory() || current.isSymbolicLink() || current.uid !== process.getuid())
+  )
+    NodeFS.renameSync(home, `${root}/cache/home-quarantine-${NodeCrypto.randomUUID()}`);
   // The migration marker is server-only; build code cannot force a later recursive chmod.
   const marker = `${root}/state/build-permissions-v2`;
   if (!NodeFS.existsSync(marker)) {
     const migrate = (path) => {
+      if (path.startsWith(`${root}/cache/home-quarantine-`)) return;
       const stat = NodeFS.lstatSync(path);
       if (stat.isSymbolicLink()) return;
       NodeFS.chmodSync(path, stat.isDirectory() ? 0o2770 : 0o660 | (stat.mode & 0o111 ? 0o110 : 0));
@@ -25,11 +33,8 @@ export function prepareVolume(root, generation) {
     NodeFS.writeFileSync(marker, "2", { mode: 0o600 });
   }
   NodeFS.chmodSync(`${root}/build`, 0o2770);
-  const home = `${root}/cache/home`;
-  const current = NodeFS.lstatSync(home, { throwIfNoEntry: false });
-  if (current && (!current.isDirectory() || current.isSymbolicLink()))
-    NodeFS.renameSync(home, `${root}/cache/home-quarantine-${NodeCrypto.randomUUID()}`);
   NodeFS.mkdirSync(home, { recursive: true, mode: 0o2770 });
+  NodeFS.chmodSync(home, 0o2770);
   NodeFS.writeFileSync(`${root}/state/generation`, generation, { mode: 0o600 });
 }
 if (process.argv[1] && import.meta.url === NodeURL.pathToFileURL(process.argv[1]).href)

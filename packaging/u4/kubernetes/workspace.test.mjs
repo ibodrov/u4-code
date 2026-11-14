@@ -98,6 +98,7 @@ it("migrates only old caches once, preserves executable tools and keeps migratio
     expect((await NodeFSP.stat(NodePath.join(root, "cache/mvn"))).mode & 0o777).toBe(0o770);
     expect((await NodeFSP.stat(NodePath.join(root, "provider"))).mode & 0o777).toBe(0o700);
     expect((await NodeFSP.stat(NodePath.join(root, "state"))).mode & 0o777).toBe(0o700);
+    expect((await NodeFSP.stat(NodePath.join(root, "cache/home"))).mode & 0o2777).toBe(0o2770);
     await NodeFSP.chmod(NodePath.join(root, "cache/mvn"), 0o600);
     prepareVolume(root, "2");
     expect((await NodeFSP.stat(NodePath.join(root, "cache/mvn"))).mode & 0o777).toBe(0o600);
