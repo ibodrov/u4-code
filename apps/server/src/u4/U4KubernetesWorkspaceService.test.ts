@@ -293,8 +293,15 @@ it.effect(
         environmentId: "environment",
         pvcName: initial.pvcName,
         status: "ready",
+        snapshotInstalled: true,
       });
-      expect(fixture.installed).toBe(1);
+      expect(fixture.installed).toBe(0);
+      expect(fixture.mutations).toContainEqual([
+        "wait",
+        "--for=condition=Ready",
+        "pod/ws-test-2",
+        "--timeout=180s",
+      ]);
       yield* service.lifecycle({ id: initial.id, action: "stop" });
       const archived = yield* service.lifecycle({ id: initial.id, action: "forget" });
       expect(archived.forgottenAt).toBeDefined();
@@ -368,6 +375,20 @@ it.effect("installs an incomplete snapshot exactly once on refresh", () => {
     ).toBe(true);
     expect(f.installed).toBe(1);
     yield* service.lifecycle({ id: initial.id, action: "refresh" });
+    expect(f.installed).toBe(1);
+  }).pipe(Effect.provide(f.layer));
+});
+it.effect("replacement installs only a snapshot that was never installed", () => {
+  const f = setup(false);
+  return Effect.gen(function* () {
+    const service = yield* U4KubernetesWorkspaceService.U4KubernetesWorkspaceService;
+    yield* service.lifecycle({ id: initial.id, action: "stop" });
+    const next = yield* service.lifecycle({
+      id: initial.id,
+      action: "restart",
+      approveReplacement: true,
+    });
+    expect(next.snapshotInstalled).toBe(true);
     expect(f.installed).toBe(1);
   }).pipe(Effect.provide(f.layer));
 });

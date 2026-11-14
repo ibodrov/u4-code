@@ -272,6 +272,16 @@ export const make = Effect.gen(function* () {
       });
     }).pipe(allocation.withPermits(1));
     const current = yield* reconcile(profile, workspace);
+    // The retained PVC already holds the repository; users may have advanced its branches.
+    if (current.snapshotInstalled) {
+      yield* kubectl.run(profile, [
+        "wait",
+        "--for=condition=Ready",
+        `pod/${current.podName}`,
+        "--timeout=180s",
+      ]);
+      return yield* reconcile(profile, current);
+    }
     yield* transfer.install(profile, current);
     return yield* reconcile(profile, { ...current, snapshotInstalled: true });
   });
