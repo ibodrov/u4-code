@@ -134,8 +134,9 @@ repeating the call's outcome and duration, so event counts are not call counts.
 
 ## Delivery
 
-The server sends batches to the ingest endpoint at `ingest.t3.codes`, which archives
-every event and forwards some of them to PostHog. A send can fail after the endpoint
+The server sends batches to the endpoint in `T3CODE_POSTHOG_HOST` with the key in
+`T3CODE_POSTHOG_KEY`. U4 ships neither, so analytics stay off until an operator sets both;
+upstream's `ingest.t3.codes` archives every event and forwards some of them to PostHog. A send can fail after the endpoint
 has stored the batch, so every retry is a copy.
 [Delivery](../../apps/server/src/telemetry/AnalyticsService.ts) gives each event a
 uuid when it is recorded (the endpoint rejects events without one), backs off after

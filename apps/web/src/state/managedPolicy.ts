@@ -30,6 +30,9 @@ export function firstManagedDenial(
   return undefined;
 }
 
+export const NO_ANALYTICS_BY_DEFAULT =
+  "U4 Code sends no usage analytics unless its server is set up with your own analytics endpoint.";
+
 /** What usage-data notices say when the policy turns product analytics off. */
 export function managedTelemetryOffMessage(
   policy: ManagedPolicySummary | undefined,

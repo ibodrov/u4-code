@@ -20,6 +20,10 @@ U4 Code has no published downloads, app store apps or hosted web app. Build it f
 
 The download links, mobile apps, hosted web app at app.t3.codes and Discord community of T3 Code belong to the upstream project, not to U4 Code. Report problems with U4 Code in this repository, not upstream.
 
+## Privacy
+
+U4 Code sends no usage analytics by default. The server sends product events only to an endpoint you set with `T3CODE_POSTHOG_KEY` and `T3CODE_POSTHOG_HOST`; see [product usage data](./docs/user/telemetry.md). Agents send your prompts to their providers under those providers' terms.
+
 ## Documentation
 
 The documentation comes from T3 Code. Pages about T3 downloads, the mobile apps and T3 Connect describe upstream services that U4 Code does not provide.
