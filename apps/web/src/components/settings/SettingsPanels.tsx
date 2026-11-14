@@ -1,6 +1,7 @@
 import { useAtomValue } from "@effect/atom-react";
 import { NotificationSettings } from "./NotificationSettings";
 import { PRIVACY_POLICY_URL } from "../../legalLinks";
+import { UPSTREAM_PRODUCT_NAME, UPSTREAM_REPOSITORY_URL } from "@t3tools/shared/productIdentity";
 import { CheckIcon } from "lucide-react";
 import { msg, T, useGT, useMessages } from "gt-react";
 import { Link, useNavigate } from "@tanstack/react-router";
@@ -2318,6 +2319,34 @@ export function AboutSettingsPanel() {
             }
           />
         )}
+      </SettingsSection>
+
+      <SettingsSection id="credits" title="Credits">
+        <SettingsRow
+          title={`Based on ${UPSTREAM_PRODUCT_NAME}`}
+          description={
+            <>
+              U4 Code is an independent fork of {UPSTREAM_PRODUCT_NAME} by T3 Tools Inc. It is not
+              affiliated with or endorsed by T3 Tools Inc. {UPSTREAM_PRODUCT_NAME} is MIT licensed;
+              its copyright notice is kept in{" "}
+              <Link to="/settings/open-source-licenses" className="underline underline-offset-2">
+                Open source licenses
+              </Link>
+              .
+            </>
+          }
+          control={
+            <Button
+              render={
+                <a href={UPSTREAM_REPOSITORY_URL} target="_blank" rel="noreferrer noopener" />
+              }
+              size="sm"
+              variant="outline"
+            >
+              Upstream repository
+            </Button>
+          }
+        />
       </SettingsSection>
 
       <SettingsSection id="legal" title="Legal">

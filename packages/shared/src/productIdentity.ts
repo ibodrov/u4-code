@@ -21,3 +21,7 @@ export const PRODUCT_DEV_USER_DATA_DIR = "u4code-dev";
 
 export const PRODUCT_BOOT_SERVICE_NAME = "u4code";
 export const PRODUCT_BOOT_SERVICE_LAUNCHD_LABEL = "ca.ibodrov.u4code.service";
+
+// Upstream credit, not identity: these deliberately name the project U4 Code was forked from.
+export const UPSTREAM_PRODUCT_NAME = "T3 Code";
+export const UPSTREAM_REPOSITORY_URL = "https://github.com/pingdotgg/t3code";
