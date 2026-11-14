@@ -48,22 +48,22 @@ those exact digest references; set an exact Pi package version for the runtime:
 docker build --platform linux/amd64 --target builder \
   --build-arg NODE_IMAGE='<node digest reference>' \
   --build-arg JAVA_IMAGE='<temurin digest reference>' \
-  -t registry.ibodrov.ca/homelab/u4-builder:<version> /tmp/u4-k8s-image
+  -t registry.example.com/u4/u4-builder:<version> /tmp/u4-k8s-image
 docker build --platform linux/amd64 --target runtime \
   --build-arg NODE_IMAGE='<node digest reference>' \
   --build-arg JAVA_IMAGE='<temurin digest reference>' --build-arg PI_VERSION='<version>' \
-  -t registry.ibodrov.ca/homelab/u4-runtime:<version> /tmp/u4-k8s-image
+  -t registry.example.com/u4/u4-runtime:<version> /tmp/u4-k8s-image
 ```
 
-Authenticate to the HTTPS registry using its deployment skill, push versioned images,
-and record the registry digests. Do not copy registry credentials into the Pod.
+Use your own registry; `registry.example.com/u4` is a placeholder. Authenticate to it,
+push versioned images, and record the registry digests. Do not copy registry credentials into the Pod.
 Fresh cluster pulls must work using node-provided pull credentials.
 
 ## Manager profile
 
 Write `<U4 home>/kubernetes/profiles.json` on the managing environment, then restart
-that manager so it advertises the capability. Image references must be immutable
-`registry.ibodrov.ca/homelab/u4-*` digests:
+that manager so it advertises the capability. Image references must be pinned by digest
+(`<registry host>[:<port>]/<path>@sha256:<64 hex digits>`); tags are refused:
 
 ```json
 [
@@ -72,8 +72,8 @@ that manager so it advertises the capability. Image references must be immutable
     "label": "Local k3s",
     "context": "default",
     "namespace": "u4-k8s-mvp",
-    "runtimeImage": "registry.ibodrov.ca/homelab/u4-runtime@sha256:<64 hex digits>",
-    "builderImage": "registry.ibodrov.ca/homelab/u4-builder@sha256:<64 hex digits>",
+    "runtimeImage": "registry.example.com/u4/u4-runtime@sha256:<64 hex digits>",
+    "builderImage": "registry.example.com/u4/u4-builder@sha256:<64 hex digits>",
     "storageClass": "longhorn-retain",
     "storageGiB": 32,
     "maxWorkspaces": 2

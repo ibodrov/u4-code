@@ -3,8 +3,17 @@ import { ProjectId, TrimmedNonEmptyString } from "./baseSchemas.ts";
 
 export const U4_RESOURCE_NAME_PATTERN = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/;
 const ResourceName = Schema.String.check(Schema.isPattern(U4_RESOURCE_NAME_PATTERN));
+const HOST_LABEL = "[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?";
+const REPOSITORY_PART = "[a-z0-9]+(?:(?:[._]|__|-+)[a-z0-9]+)*";
+// Images must be pinned by digest. The explicit registry host needs a dot, a port or localhost,
+// so a bare path is never resolved against a default registry.
 const DigestImage = Schema.String.check(
-  Schema.isPattern(/^registry\.ibodrov\.ca\/homelab\/u4-[a-z0-9-]+@sha256:[a-f0-9]{64}$/),
+  Schema.isPattern(
+    new RegExp(
+      `^(?:localhost|${HOST_LABEL}(?:\\.${HOST_LABEL})+|${HOST_LABEL}(?:\\.${HOST_LABEL})*:[0-9]{1,5})` +
+        `(?:/${REPOSITORY_PART})+@sha256:[a-f0-9]{64}$`,
+    ),
+  ),
 );
 export const U4ClusterProfile = Schema.Struct({
   id: ResourceName,
