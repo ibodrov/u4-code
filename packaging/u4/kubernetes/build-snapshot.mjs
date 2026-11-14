@@ -1,3 +1,4 @@
+import * as NodeFS from "node:fs";
 import * as NodeFSP from "node:fs/promises";
 import * as NodePath from "node:path";
 import * as NodeCrypto from "node:crypto";
@@ -35,7 +36,7 @@ const safe = (source) => [
 ];
 const git = async (args, env, signal) => {
   try {
-    return await exec("git", args, { env, signal });
+    return await exec("git", args, { env, signal, maxBuffer: 64 * 1024 * 1024 });
   } catch {
     signal?.throwIfAborted();
     throw new PreparationError("git-failed");
@@ -90,17 +91,29 @@ const repository = async (workspaceRoot, source, env, signal) => {
       .trim()
       .split("\n");
     for (const path of paths) await contained(path);
-    return { source, paths };
+    const tracked = new Set(),
+      parents = new Set(),
+      gitlinks = new Set();
+    const index = (
+      await git([...safe(source), "-C", source, "ls-files", "--stage", "-z"], env, signal)
+    ).stdout;
+    for (const record of index.split("\0").filter(Boolean)) {
+      const match = /^(\d{6}) [a-f0-9]+ [0-3]\t([\s\S]+)$/.exec(record);
+      if (!match) throw new PreparationError("git-failed");
+      tracked.add(match[2]);
+      for (const parent of ancestors(match[2])) parents.add(parent);
+      if (match[1] === "160000") gitlinks.add(match[2]);
+    }
+    return { source, paths, tracked, parents, gitlinks };
   } catch (error) {
     signal?.throwIfAborted();
     if (error instanceof PreparationError || error.name === "AbortError") throw error;
     throw new PreparationError("git-failed");
   }
 };
-const list = async (root, signal, visitDirectory = async () => {}) => {
+const list = async (root, signal) => {
   const entries = [];
   const walk = async (relative) => {
-    await visitDirectory(relative);
     for (const entry of await NodeFSP.readdir(NodePath.join(root, relative), {
       withFileTypes: true,
     })) {
@@ -146,10 +159,18 @@ const ignoredPaths = (source, paths, env, signal) =>
     child.stdin.on("error", () => {});
     child.on("close", (code) =>
       code === 0 || code === 1
-        ? resolve(new Set(Buffer.concat(chunks).toString().split("\0").filter(Boolean)))
+        ? resolve(
+            new Set(
+              Buffer.concat(chunks)
+                .toString()
+                .split("\0")
+                .filter(Boolean)
+                .map((p) => p.slice(2)),
+            ),
+          )
         : reject(signal?.aborted ? signal.reason : new PreparationError("git-failed")),
     );
-    child.stdin.end(paths.map((p) => p + "\0").join(""));
+    child.stdin.end(paths.map((p) => "./" + p + "\0").join(""));
   });
 const ancestors = (path) =>
   path
@@ -178,9 +199,102 @@ const classify = async (source, entries, domains, env, signal) => {
   }
   return ignored;
 };
+const selectSource = async (workspaceRoot, source, env, signal) => {
+  const root = await repository(workspaceRoot, source, env, signal),
+    domains = [root],
+    entries = [];
+  const walk = async (domain) => {
+    let directories = [domain.source];
+    while (directories.length) {
+      const batch = [];
+      for (const directory of directories) {
+        for (const entry of await NodeFSP.readdir(directory, { withFileTypes: true })) {
+          signal?.throwIfAborted();
+          if (entry.name === ".git") continue;
+          const absolute = NodePath.join(directory, entry.name);
+          batch.push({
+            path: NodePath.relative(source, absolute),
+            relative: NodePath.relative(domain.source, absolute),
+            absolute,
+            directory: entry.isDirectory(),
+            file: entry.isFile(),
+            link: entry.isSymbolicLink(),
+          });
+        }
+      }
+      const ignored = await ignoredPaths(
+        domain.source,
+        batch.map((e) => e.relative),
+        env,
+        signal,
+      );
+      directories = [];
+      for (const entry of batch) {
+        const tracked = domain.tracked.has(entry.relative) || domain.parents.has(entry.relative);
+        if (ignored.has(entry.relative) && !tracked) continue;
+        entries.push(entry);
+        if (entries.length > 200000) throw new PreparationError("snapshot-limit");
+        if (!entry.directory) continue;
+        if (
+          (domain.gitlinks.has(entry.relative) || !domain.parents.has(entry.relative)) &&
+          (await exists(NodePath.join(entry.absolute, ".git")))
+        ) {
+          const nested = await repository(workspaceRoot, entry.absolute, env, signal);
+          domains.push(nested);
+          await walk(nested);
+        } else directories.push(entry.absolute);
+      }
+    }
+  };
+  await walk(root);
+  domains.sort((a, b) => b.source.length - a.source.length);
+  return { root, domains, entries };
+};
+const discardedName =
+  /^\.discard-[a-f0-9]{24}-[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
+const removeObsolete = async (path) => {
+  const remove = async (entry) => {
+    let handle;
+    try {
+      // Linux O_PATH pins even mode-000 directories; NOFOLLOW keeps chmod on that exact inode.
+      handle = await NodeFSP.open(
+        entry,
+        0x200000 | NodeFS.constants.O_DIRECTORY | NodeFS.constants.O_NOFOLLOW,
+      );
+    } catch (error) {
+      if (error.code === "ENOENT") return;
+      if (error.code !== "ENOTDIR" && error.code !== "ELOOP") throw error;
+      await NodeFSP.unlink(entry);
+      return;
+    }
+    try {
+      const stat = await handle.stat();
+      if (stat.uid !== process.getuid())
+        throw Object.assign(new Error(), { code: "FOREIGN_OWNER" });
+      const pinned = `/proc/self/fd/${handle.fd}`;
+      await NodeFSP.chmod(pinned, (stat.mode & 0o777) | 0o700);
+      for await (const child of await NodeFSP.opendir(pinned))
+        await remove(NodePath.join(pinned, child.name));
+      await NodeFSP.rmdir(entry);
+    } finally {
+      await handle.close();
+    }
+  };
+  try {
+    await remove(path);
+  } catch (error) {
+    const code = /^[A-Z_]+$/.test(error.code) ? error.code : "UNKNOWN";
+    console.error(`u4-build: obsolete-copy-cleanup-failed ${NodePath.basename(path)} ${code}`);
+  }
+};
+const sweepObsolete = async (buildRoot) => {
+  for (const name of await NodeFSP.readdir(buildRoot))
+    if (discardedName.test(name)) await removeObsolete(NodePath.join(buildRoot, name));
+};
 export async function prepareSnapshot(workspaceRoot, cwd, buildRoot, signal) {
   let stage = "source-unreadable",
-    temporary;
+    temporary,
+    discarded;
   try {
     signal?.throwIfAborted();
     let source = cwd;
@@ -195,17 +309,12 @@ export async function prepareSnapshot(workspaceRoot, cwd, buildRoot, signal) {
       GIT_CONFIG_GLOBAL: "/dev/null",
       GIT_TERMINAL_PROMPT: "0",
     };
-    const root = await repository(workspaceRoot, source, env, signal),
-      domains = [root];
-    const entries = await list(source, signal, async (relative) => {
-      if (relative && (await exists(NodePath.join(source, relative, ".git"))))
-        domains.push(await repository(workspaceRoot, NodePath.join(source, relative), env, signal));
-    });
-    domains.sort((a, b) => b.source.length - a.source.length);
-    const ignored = await classify(source, entries, domains, env, signal);
-    const selected = entries.filter(
-      (entry) => !ignored.has(entry.path) && !ancestors(entry.path).some((p) => ignored.has(p)),
-    );
+    await sweepObsolete(buildRoot);
+    const {
+      root,
+      domains,
+      entries: selected,
+    } = await selectSource(workspaceRoot, source, env, signal);
     let bytes = 0;
     for (const entry of selected) {
       if (!entry.directory && !entry.file && !entry.link)
@@ -268,11 +377,10 @@ export async function prepareSnapshot(workspaceRoot, cwd, buildRoot, signal) {
       }
     }
     stage = "copy-failed";
-    let removeOld = true;
     try {
       const stat = await exists(destination);
       if (stat?.isDirectory() && !stat.isSymbolicLink()) {
-        const leaves = new Set(entries.filter((e) => !e.directory).map((e) => e.path));
+        const leaves = new Set(selected.filter((e) => !e.directory).map((e) => e.path));
         const sourcePaths = new Set(selected.map((e) => e.path));
         const old = (await list(destination, signal)).filter(
           (e) =>
@@ -290,17 +398,17 @@ export async function prepareSnapshot(workspaceRoot, cwd, buildRoot, signal) {
     } catch (error) {
       signal?.throwIfAborted();
       if (error.name === "AbortError") throw error;
-      removeOld = false;
       // Old outputs are optional, but a broken trusted repository still fails preparation.
       if (error instanceof PreparationError && error.reason === "git-failed")
-        await classify(source, entries, domains, env, signal);
+        await classify(source, selected, domains, env, signal);
     }
     signal?.throwIfAborted();
-    const discarded = NodePath.join(buildRoot, `.discard-${id}-${NodeCrypto.randomUUID()}`);
+    discarded = NodePath.join(buildRoot, `.discard-${id}-${NodeCrypto.randomUUID()}`);
     if (await exists(destination)) await NodeFSP.rename(destination, discarded);
     await NodeFSP.rename(temporary, destination);
     temporary = undefined;
-    if (removeOld) await NodeFSP.rm(discarded, { recursive: true, force: true }).catch(() => {});
+    await removeObsolete(discarded);
+    discarded = undefined;
     await NodeFSP.rm(NodePath.join(buildRoot, `${id}.json`), { force: true }).catch(() => {});
     return NodePath.join(destination, NodePath.relative(source, cwd));
   } catch (error) {
@@ -308,6 +416,7 @@ export async function prepareSnapshot(workspaceRoot, cwd, buildRoot, signal) {
     if (error.name === "AbortError") throw error;
     throw error instanceof PreparationError ? error : new PreparationError(stage);
   } finally {
+    if (discarded) await removeObsolete(discarded);
     if (temporary) await NodeFSP.rm(temporary, { recursive: true, force: true });
   }
 }

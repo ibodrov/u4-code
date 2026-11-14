@@ -6,14 +6,19 @@ import * as NodeChildProcess from "node:child_process";
 import * as NodeUtil from "node:util";
 import { prepareSnapshot } from "./build-snapshot.mjs";
 
-const io = vi.hoisted(() => ({ read: null }));
+const io = vi.hoisted(() => ({ read: null, open: null }));
 vi.mock("node:fs/promises", async (original) => {
   const actual = await original();
-  return { ...actual, readdir: async (...args) => io.read?.(...args) ?? actual.readdir(...args) };
+  return {
+    ...actual,
+    readdir: async (...args) => io.read?.(...args) ?? actual.readdir(...args),
+    open: async (...args) => io.open?.(...args) ?? actual.open(...args),
+  };
 });
 const exec = NodeUtil.promisify(NodeChildProcess.execFile);
 async function fixture() {
   io.read = null;
+  io.open = null;
   const root = await NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "u4-source-boundary-"));
   const source = NodePath.join(root, "source"),
     build = NodePath.join(root, "build");
@@ -44,6 +49,7 @@ async function fixture() {
     prepare: (signal) => prepareSnapshot(root, source, build, signal),
     async [Symbol.asyncDispose]() {
       io.read = null;
+      io.open = null;
       await NodeFSP.rm(root, { recursive: true, force: true });
     },
   };
@@ -79,7 +85,7 @@ it("filters old paths below source symlinks before Git and repeatedly recovers o
   await NodeFSP.mkdir(NodePath.join(f.build, NodePath.basename(first) + ".json"));
   await exec("mkfifo", [NodePath.join(first, "old-fifo")]);
   expect(await f.prepare()).toBe(first);
-  for (const reason of ["read-failure", "entry-limit"]) {
+  for (const reason of ["read-failure", "entry-limit", "entry-limit"]) {
     io.read = (p) =>
       p === first
         ? reason === "read-failure"
@@ -95,6 +101,7 @@ it("filters old paths below source symlinks before Git and repeatedly recovers o
         : null;
     expect(await f.prepare()).toBe(first);
     io.read = null;
+    expect((await NodeFSP.readdir(f.build)).filter((p) => p.startsWith(".discard-"))).toEqual([]);
     expect(await NodeFSP.readFile(NodePath.join(first, "file"), "utf8")).toBe("trusted\n");
   }
 });
@@ -205,5 +212,100 @@ it("keeps detached and linked-worktree HEAD, tags and parent history independent
         p.endsWith(".promisor"),
       ),
     ).toEqual([]);
+  }
+});
+
+it("keeps parent-tracked source ahead of nested metadata and child ignore rules", async () => {
+  await using f = await fixture();
+  for (const directory of ["vendor", "ignored"]) {
+    await NodeFSP.mkdir(NodePath.join(f.source, directory));
+    await NodeFSP.writeFile(NodePath.join(f.source, directory, "tracked.c"), "parent bytes\n");
+  }
+  await NodeFSP.appendFile(NodePath.join(f.source, ".gitignore"), "ignored/\n");
+  await f.git(f.source, "add", "-f", "vendor/tracked.c", "ignored/tracked.c");
+  for (const directory of ["vendor", "ignored"]) {
+    await f.git(NodePath.join(f.source, directory), "init");
+    await NodeFSP.writeFile(NodePath.join(f.source, directory, ".git/info/exclude"), "*.c\n");
+  }
+  for (const _ of [1, 2]) {
+    const copy = await f.prepare();
+    for (const directory of ["vendor", "ignored"])
+      expect(await NodeFSP.readFile(NodePath.join(copy, directory, "tracked.c"), "utf8")).toBe(
+        "parent bytes\n",
+      );
+  }
+});
+it("skips ignored stale worktrees and shared clones before validating their metadata", async () => {
+  await using f = await fixture();
+  await f.git(
+    f.source,
+    "worktree",
+    "add",
+    "--detach",
+    NodePath.join(f.source, "target/stale"),
+    "HEAD",
+  );
+  await NodeFSP.rm(NodePath.join(f.source, ".git/worktrees/stale"), { recursive: true });
+  await f.git(f.source, "clone", "--shared", f.source, NodePath.join(f.source, "target/shared"));
+  for (const _ of [1, 2]) expect(await NodeFSP.readdir(await f.prepare())).not.toContain("target");
+});
+it("uses literal NUL-delimited paths for colon magic, spaces and newlines", async () => {
+  await using f = await fixture();
+  const names = [":(exclude)x", ":with space\nand newline"];
+  for (const name of names) await NodeFSP.writeFile(NodePath.join(f.source, name), name);
+  await f.git(f.source, "add", "--", "./" + names[0]);
+  const ignored = ":(glob)cache";
+  await NodeFSP.appendFile(NodePath.join(f.source, ".gitignore"), ignored + "/\n");
+  await NodeFSP.mkdir(NodePath.join(f.source, ignored));
+  await NodeFSP.writeFile(NodePath.join(f.source, ignored, "output\nwith space"), "source ignored");
+  const copy = await f.prepare();
+  await NodeFSP.mkdir(NodePath.join(copy, ignored));
+  await NodeFSP.writeFile(NodePath.join(copy, ignored, "output\nwith space"), "old optional");
+  for (const _ of [1, 2]) {
+    await f.prepare();
+    for (const name of names)
+      expect(await NodeFSP.readFile(NodePath.join(copy, name), "utf8")).toBe(name);
+    expect(await NodeFSP.readFile(NodePath.join(copy, ignored, "output\nwith space"), "utf8")).toBe(
+      "old optional",
+    );
+  }
+});
+it("cleans restrictive obsolete directories and symlinks only within owned discard names", async () => {
+  await using f = await fixture();
+  const copy = await f.prepare();
+  const marker = NodePath.join(f.root, "outside");
+  await NodeFSP.mkdir(marker);
+  await NodeFSP.writeFile(NodePath.join(marker, "keep"), "untouched");
+  const originalMode = (await NodeFSP.stat(marker)).mode;
+  const owned = ".discard-" + NodePath.basename(copy) + "-";
+  const stale = NodePath.join(f.build, owned + "11111111-1111-4111-8111-111111111111");
+  const link = NodePath.join(f.build, owned + "22222222-2222-4222-8222-222222222222");
+  const unrelated = NodePath.join(f.build, ".discard-unowned");
+  await NodeFSP.mkdir(stale);
+  await NodeFSP.symlink(marker, NodePath.join(stale, "outside"));
+  await NodeFSP.writeFile(NodePath.join(stale, "old"), "obsolete");
+  await NodeFSP.chmod(stale, 0);
+  await NodeFSP.symlink(marker, link);
+  await NodeFSP.mkdir(unrelated);
+  using warning = vi.spyOn(console, "error").mockImplementation(() => {});
+  io.open = (p) =>
+    p === stale ? Promise.reject(Object.assign(new Error(), { code: "EACCES" })) : null;
+  expect(await f.prepare()).toBe(copy);
+  expect(warning).toHaveBeenCalledWith(
+    `u4-build: obsolete-copy-cleanup-failed ${NodePath.basename(stale)} EACCES`,
+  );
+  expect((await NodeFSP.lstat(stale)).isDirectory()).toBe(true);
+  io.open = null;
+  try {
+    for (const _ of [1, 2]) {
+      expect(await f.prepare()).toBe(copy);
+      expect(await NodeFSP.readFile(NodePath.join(marker, "keep"), "utf8")).toBe("untouched");
+      expect((await NodeFSP.stat(marker)).mode).toBe(originalMode);
+      expect((await NodeFSP.readdir(f.build)).filter((p) => p.startsWith(owned))).toEqual([]);
+      expect(await NodeFSP.readFile(NodePath.join(copy, "file"), "utf8")).toBe("trusted\n");
+      expect((await NodeFSP.stat(unrelated)).isDirectory()).toBe(true);
+    }
+  } finally {
+    await NodeFSP.chmod(stale, 0o700).catch(() => {});
   }
 });
