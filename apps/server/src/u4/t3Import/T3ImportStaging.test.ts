@@ -8,6 +8,7 @@ import { EnvironmentId } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Deferred from "effect/Deferred";
 import * as Fiber from "effect/Fiber";
+import { migrationManifest } from "../../persistence/Migrations.ts";
 import * as T3ImportStaging from "./T3ImportStaging.ts";
 import { createSource, sourceThread, sourceRun, sourceItem } from "./testkit/T3SourceFixture.ts";
 
@@ -15,11 +16,25 @@ const temporary = Effect.acquireRelease(
   Effect.promise(() => NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "u4-t3-staging-"))),
   (directory) => Effect.promise(() => NodeFSP.rm(directory, { recursive: true, force: true })),
 );
-it.effect.each([81, 89])("stages only trusted tables at supported source head %s", (head) =>
+it.effect.each([81, 89, 96])("stages only trusted tables at supported source head %s", (head) =>
   Effect.gen(function* () {
     const directory = yield* temporary;
     const source = yield* createSource(directory, head);
     yield* source.apply("thread.created", "thread:a", sourceThread("thread:a"));
+    const item = sourceItem("item:a", "thread:a");
+    yield* source.apply("turn-item.updated", "thread:a", item);
+    const ledger = yield* source.sql<{
+      readonly migration_id: number;
+      readonly name: string;
+    }>`SELECT migration_id, name FROM effect_sql_migrations ORDER BY migration_id`;
+    assert.deepStrictEqual(
+      ledger.map((row) => [row.migration_id, row.name]),
+      migrationManifest.filter(([id]) => id <= head),
+    );
+    const columns = yield* source.sql<{
+      readonly name: string;
+    }>`SELECT name FROM pragma_table_xinfo('orchestration_v2_projection_turn_items')`;
+    assert.strictEqual(columns.some((column) => column.name === "inline_work_output"), head === 96);
     const stage = yield* T3ImportStaging.T3ImportStaging;
     const snapshot = yield* stage.open({
       sourceHome: source.home,
@@ -28,6 +43,16 @@ it.effect.each([81, 89])("stages only trusted tables at supported source head %s
       destinationEnvironmentId: EnvironmentId.make("destination"),
     });
     assert.strictEqual(snapshot.schemaHead, head);
+    const migratedLedger = yield* snapshot.sql<{
+      readonly head: number;
+    }>`SELECT MAX(migration_id) AS head FROM effect_sql_migrations`;
+    assert.strictEqual(migratedLedger[0]?.head, 96);
+    const items = yield* snapshot.sql<{
+      readonly payload_json: string;
+      readonly inline_work_output: number;
+    }>`SELECT payload_json, inline_work_output FROM orchestration_v2_projection_turn_items ORDER BY turn_item_id`;
+    assert.deepStrictEqual(items.map((row) => JSON.parse(row.payload_json)), [item]);
+    assert.deepStrictEqual(items.map((row) => row.inline_work_output), [0]);
     const rows = yield* snapshot.sql<{
       readonly thread_id: string;
     }>`SELECT thread_id FROM orchestration_v2_projection_threads`;

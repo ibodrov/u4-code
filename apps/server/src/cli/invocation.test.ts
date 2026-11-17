@@ -297,20 +297,29 @@ it.layer(NodeServices.layer)("manual server installation ownership", (it) => {
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
       const root = yield* fs.realPath(yield* fs.makeTempDirectoryScoped());
-      // The install script's launcher names ~/.t3, which here links to a home elsewhere.
-      const executable = path.join(root, "data/t3/runtime/versions/1.0.0/t3");
-      const launcher = path.join(root, "bin/t3");
-      const copy = path.join(root, "bin/t3-copy");
+      // The install script's launcher names ~/.u4, which here links to a home elsewhere.
+      const executable = path.join(root, "data/u4/runtime/versions/1.0.0/t3");
+      const launcher = path.join(root, "bin/u4");
+      const copy = path.join(root, "bin/u4-copy");
+      const movedBin = path.join(root, "moved-bin");
+      const official = path.join(movedBin, "t3");
+      const officialExecutable = path.join(root, "data/t3/runtime/versions/1.0.0/t3");
+      const officialScript = posixLauncherScript(officialExecutable);
       yield* fs.makeDirectory(path.dirname(executable), { recursive: true });
       yield* fs.makeDirectory(path.dirname(launcher), { recursive: true });
+      yield* fs.makeDirectory(movedBin);
+      yield* fs.makeDirectory(path.dirname(officialExecutable), { recursive: true });
       yield* fs.writeFileString(executable, "", { mode: 0o755 });
+      yield* fs.writeFileString(officialExecutable, "", { mode: 0o755 });
+      yield* fs.writeFileString(official, officialScript, { mode: 0o755 });
       yield* fs.writeFileString(copy, "", { mode: 0o755 });
-      yield* fs.symlink(path.join(root, "data/t3"), path.join(root, ".t3"));
-      yield* fs.symlink(path.join(root, ".t3/runtime/versions/1.0.0/t3"), launcher);
-      // Earlier PATH entries hold a directory and a non-executable file named t3.
-      yield* fs.makeDirectory(path.join(root, "shadow-dir/t3"), { recursive: true });
+      yield* fs.symlink(path.join(root, "data/u4"), path.join(root, ".u4"));
+      const target = path.join(root, ".u4/runtime/versions/1.0.0/t3");
+      yield* fs.symlink(target, launcher);
+      // Earlier PATH entries hold a directory and a non-executable file named u4.
+      yield* fs.makeDirectory(path.join(root, "shadow-dir/u4"), { recursive: true });
       yield* fs.makeDirectory(path.join(root, "shadow-file"));
-      yield* fs.writeFileString(path.join(root, "shadow-file/t3"), "");
+      yield* fs.writeFileString(path.join(root, "shadow-file/u4"), "");
       const resolve = (invokedAs: string, PATH = "shadow-dir:shadow-file:bin") =>
         resolveServerInstallation.pipe(
           Effect.provideService(HostProcess.ExecutablePath, executable),
@@ -321,25 +330,53 @@ it.layer(NodeServices.layer)("manual server installation ownership", (it) => {
           Effect.provideService(HostProcess.HomeDirectory, root),
           Effect.provideService(HostProcess.Platform, "linux"),
         );
-      const baseDir = path.join(root, ".t3");
+      const baseDir = path.join(root, ".u4");
 
-      expect(yield* resolve("t3")).toEqual({ kind: "t3-launcher", launcher, baseDir });
+      expect(yield* resolve("u4")).toEqual({ kind: "t3-launcher", launcher, baseDir });
       expect(yield* resolve(launcher)).toEqual({ kind: "t3-launcher", launcher, baseDir });
       expect(yield* resolve(executable)).toBeNull();
       expect(yield* resolve(copy)).toBeNull();
 
       // The script launcher execs the runtime by absolute path, so argv0 names the runtime.
       yield* fs.remove(launcher);
-      yield* fs.writeFileString(
-        launcher,
-        posixLauncherScript(path.join(root, ".t3/runtime/versions/1.0.0/t3")),
-        { mode: 0o755 },
-      );
+      const script = posixLauncherScript(target);
+      yield* fs.writeFileString(launcher, script, { mode: 0o755 });
       expect(yield* resolve(executable, path.join(root, "bin"))).toEqual({
         kind: "t3-launcher",
         launcher,
         baseDir,
       });
+
+      const moved = path.join(movedBin, "u4");
+      yield* fs.writeFileString(path.join(baseDir, "runtime/launchers"), launcher + "\n");
+      yield* fs.rename(launcher, moved);
+      const searchPath = movedBin + ":" + path.join(root, "bin");
+      expect(yield* fs.exists(launcher)).toBe(false);
+      expect(yield* fs.readFileString(path.join(baseDir, "runtime/launchers"))).toBe(launcher + "\n");
+      expect(yield* fs.readFileString(moved)).toBe(script);
+      expect(yield* resolve(executable, searchPath)).toEqual({
+        kind: "t3-launcher",
+        launcher: moved,
+        baseDir,
+      });
+
+      yield* fs.writeFileString(moved, script + "# user wrapper\n");
+      expect(yield* resolve(executable, searchPath)).toBeNull();
+      const otherVersion = path.join(baseDir, "runtime/versions/2.0.0/t3");
+      yield* fs.makeDirectory(path.dirname(otherVersion), { recursive: true });
+      yield* fs.writeFileString(otherVersion, "", { mode: 0o755 });
+      for (const unrelated of [copy, otherVersion, officialExecutable]) {
+        yield* fs.writeFileString(moved, posixLauncherScript(unrelated));
+        expect(yield* resolve(executable, searchPath)).toBeNull();
+      }
+      yield* fs.writeFileString(moved, script);
+      expect(yield* resolve(executable, searchPath)).toEqual({
+        kind: "t3-launcher",
+        launcher: moved,
+        baseDir,
+      });
+      expect(yield* fs.readFileString(official)).toBe(officialScript);
+      expect(yield* fs.readFileString(officialExecutable)).toBe("");
     }),
   );
 

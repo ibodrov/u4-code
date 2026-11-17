@@ -1,6 +1,7 @@
 // @effect-diagnostics nodeBuiltinImport:off
 // All source and destination databases are synthetic, private temporary homes.
 import * as NodeFSP from "node:fs/promises";
+import * as NodeCrypto from "node:crypto";
 import * as NodeChildProcess from "node:child_process";
 import * as NodeSqlite from "node:sqlite";
 import * as NodePath from "node:path";
@@ -1540,7 +1541,17 @@ it.effect("matches the frozen b31 small stored-history oracle", () =>
       const rows = yield* h.sql.unsafe<Record<string, unknown>>(
         `SELECT * FROM "${table}" ORDER BY rowid`,
       );
-      dump[table] = rows;
+      if (table === PROJECTION_PREFIX + "turn_items") {
+        assert.deepStrictEqual(
+          rows.map((row) => row.inline_work_output),
+          [0, 0, 0, 0, 0, 0, 0],
+        );
+        dump[table] = rows.map((row) =>
+          Object.fromEntries(
+            Object.entries(row).filter(([column]) => column !== "inline_work_output"),
+          ),
+        );
+      } else dump[table] = rows;
       if (table.startsWith(PROJECTION_PREFIX)) {
         const kind = table.slice(PROJECTION_PREFIX.length) as (typeof RECORD_TABLES)[number];
         const originals = yield* h.source.sql.unsafe<{ payload_json: string; thread_id: string }>(
@@ -1591,10 +1602,12 @@ it.effect("matches the frozen b31 small stored-history oracle", () =>
     }
     const actual = { preview: { ...imported.preview, planId: "<plan-id>" }, dump, ledger, handoff };
     const golden = new URL("./testkit/b31-import-golden.json", import.meta.url);
-    assert.deepStrictEqual(
-      actual,
-      JSON.parse(yield* Effect.promise(() => NodeFSP.readFile(golden, "utf8"))),
+    const goldenJson = yield* Effect.promise(() => NodeFSP.readFile(golden, "utf8"));
+    assert.strictEqual(
+      NodeCrypto.createHash("sha256").update(goldenJson).digest("hex"),
+      "b92620455a9ad98a52b92a9544537061e84bbab19c3e512cbd52bf624f7bb057",
     );
+    assert.deepStrictEqual(actual, JSON.parse(goldenJson));
   }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
 );
 

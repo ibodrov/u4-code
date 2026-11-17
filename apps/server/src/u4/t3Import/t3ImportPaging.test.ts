@@ -27,7 +27,11 @@ it.effect("pages full tuples and oversized singletons without skipping or repeat
       Effect.promise(() => NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "t3-import-pages-"))),
       (directory) => Effect.promise(() => NodeFSP.rm(directory, { recursive: true, force: true })),
     );
-    const source = yield* createSource(directory);
+    const source = yield* createSource(directory, 96);
+    const ledger = yield* source.sql<{
+      readonly head: number;
+    }>`SELECT MAX(migration_id) AS head FROM effect_sql_migrations`;
+    assert.strictEqual(ledger[0]?.head, 96);
     const members = ["thread:Z", "thread:a"];
     for (const thread of members) {
       yield* source.apply("thread.created", thread, sourceThread(thread));
@@ -103,6 +107,20 @@ it.effect("pages full tuples and oversized singletons without skipping or repeat
     yield* source.sql`CREATE TEMP TABLE t3_import_oversized(thread_id TEXT)`;
     yield* source.sql`UPDATE mcp_app_model_context SET item_id = ${members[0]! + ":"} || item_id`;
     const whole = yield* readUnit(source.sql, members[0]!, members);
+    assert.deepStrictEqual(
+      whole.raw.get("turn_items")!.map((row) => row.inline_work_output),
+      [0, 0, 0, 0, 0, 0],
+    );
+    const pre095Raw = new Map(whole.raw);
+    pre095Raw.set(
+      "turn_items",
+      whole.raw.get("turn_items")!.map((row) =>
+        Object.fromEntries(
+          Object.entries(row).filter(([column]) => column !== "inline_work_output"),
+        ),
+      ),
+    );
+    const pre095Digests = contentDigests({ ...whole, raw: pre095Raw }, new Map());
     const streamed = yield* streamDigests(
       source.sql,
       members[0]!,
@@ -111,6 +129,26 @@ it.effect("pages full tuples and oversized singletons without skipping or repeat
       new Map(),
     );
     assert.deepStrictEqual(streamed, contentDigests(whole, new Map()));
+    assert.deepStrictEqual(streamed, pre095Digests);
+    assert.deepStrictEqual(contentDigests(whole, new Map()), pre095Digests);
+    const originalPayload = whole.raw.get("turn_items")!.find(
+      (row) => row.turn_item_id === members[0]! + ":same",
+    )!.payload_json;
+    yield* source.sql`UPDATE orchestration_v2_projection_turn_items SET payload_json = json_set(payload_json, '$.text', 'Changed history payload') WHERE turn_item_id = ${members[0]! + ":same"}`;
+    const changedStreamed = yield* streamDigests(
+      source.sql,
+      members[0]!,
+      members,
+      () => Effect.void,
+      new Map(),
+    );
+    const changedWhole = yield* readUnit(source.sql, members[0]!, members);
+    assert.notStrictEqual(changedStreamed.digest, streamed.digest);
+    assert.notStrictEqual(
+      contentDigests(changedWhole, new Map()).digest,
+      contentDigests(whole, new Map()).digest,
+    );
+    yield* source.sql`UPDATE orchestration_v2_projection_turn_items SET payload_json = ${originalPayload} WHERE turn_item_id = ${members[0]! + ":same"}`;
     const summary = yield* sourceSummary(source.sql, members);
     const counts = {
       ...summary.counts,
