@@ -1,3 +1,5 @@
+import * as T3ImportService from "../u4/t3Import/T3ImportService.ts";
+import * as T3ImportStaging from "../u4/t3Import/T3ImportStaging.ts";
 import * as WorktreeBranchSync from "./WorktreeBranchSync.ts";
 import * as GuestShareService from "../guest/GuestShareService.ts";
 import * as UsageLimitRecoveryWorker from "./UsageLimitRecoveryWorker.ts";
@@ -373,6 +375,17 @@ const layerMcpAppRequestsProvided = McpAppRequests.layer.pipe(
   ),
 );
 
+const layerT3ImportProvided = T3ImportService.layer.pipe(
+  Layer.provide(
+    Layer.mergeAll(
+      T3ImportStaging.layer,
+      layerEventSink,
+      ProjectionStore.layer,
+      layerProjectService,
+    ),
+  ),
+);
+
 export const layer = Layer.mergeAll(
   layerCommandOutputHubProvided,
   layerOrchestratorProvided,
@@ -387,6 +400,7 @@ export const layer = Layer.mergeAll(
 );
 
 export const layerProduction = Layer.mergeAll(
+  layerT3ImportProvided,
   WorktreeBranchSync.layer.pipe(
     Layer.provide(Layer.merge(layerThreadManagementProvided, ProjectionStore.layer)),
   ),

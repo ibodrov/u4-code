@@ -579,6 +579,10 @@
       "types": "./src/speech.ts",
       "import": "./src/speech.ts"
     },
+    "./productIdentity": {
+      "types": "./src/productIdentity.ts",
+      "import": "./src/productIdentity.ts"
+    },
     "./pinOrderKey": {
       "types": "./src/pinOrderKey.ts",
       "import": "./src/pinOrderKey.ts"

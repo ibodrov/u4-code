@@ -506,6 +506,36 @@ export interface OlderSettledThreadsListing {
   readonly counts: ReadonlyArray<OrchestrationV2OlderSettledCount>;
 }
 
+type HistoryUserItem = Extract<OrchestrationV2TurnItem, { type: "user_message" }>;
+export type TurnStartHistoryIndexItem = Pick<
+  OrchestrationV2TurnItem,
+  "id" | "threadId" | "runId" | "nodeId" | "type" | "ordinal" | "providerThreadId"
+> & {
+  readonly inputIntent?: HistoryUserItem["inputIntent"];
+  readonly messageId?: HistoryUserItem["messageId"];
+  readonly scheduledTaskId?: HistoryUserItem["scheduledTaskId"];
+};
+type HistoryProjectedItem<T extends TurnStartHistoryIndexItem> = Omit<
+  OrchestrationV2ProjectedTurnItem,
+  "item"
+> & { readonly item: T };
+type HistoryProjection<T extends TurnStartHistoryIndexItem> = Pick<
+  OrchestrationV2ThreadProjection,
+  "thread" | "runs" | "attempts"
+> & {
+  readonly turnItems: ReadonlyArray<T>;
+  readonly visibleTurnItems: ReadonlyArray<HistoryProjectedItem<T>>;
+};
+export const HISTORICAL_ITEM_TYPES = [
+  "user_message",
+  "assistant_message",
+  "command_execution",
+  "error",
+  "run_interrupt_result",
+  "file_change",
+  "proposed_plan",
+] as const;
+
 export interface ProjectionStoreV2Shape {
   readonly searchThreadStream: (
     input: OrchestrationV2SearchThreadInput,
@@ -627,6 +657,7 @@ export interface ProjectionStoreV2Shape {
   ) => Effect.Effect<OrchestrationV2AppThread, ProjectionStoreV2Error>;
   readonly getLimitRecoveryCandidates: (options: {
     readonly now: DateTime.Utc;
+    readonly threadIds?: ReadonlyArray<ThreadId>;
     readonly autoResume: boolean;
     readonly snooze: boolean;
   }) => Effect.Effect<ReadonlyArray<ProjectionLimitRecoveryCandidate>, ProjectionStoreV2Error>;
@@ -684,9 +715,29 @@ export interface ProjectionStoreV2Shape {
     > & { readonly hasConversation: boolean },
     ProjectionStoreV2Error
   >;
+  readonly getInheritedHistoryItems: (
+    threadId: ThreadId,
+  ) => Effect.Effect<ReadonlyArray<OrchestrationV2TurnItem>, ProjectionStoreV2Error>;
+  readonly findWorkCandidates: (
+    threadIds: ReadonlyArray<ThreadId>,
+    options: { readonly now: DateTime.Utc },
+  ) => Effect.Effect<
+    ReadonlyArray<{ readonly threadId: ThreadId; readonly kind: string }>,
+    ProjectionStoreV2Error
+  >;
+  readonly getTurnStartHistoryIndex: (
+    threadId: ThreadId,
+  ) => Effect.Effect<ReadonlyArray<TurnStartHistoryIndexItem>, ProjectionStoreV2Error>;
+  readonly getInheritedHistoryIndex: (
+    threadId: ThreadId,
+  ) => Effect.Effect<ReadonlyArray<TurnStartHistoryIndexItem>, ProjectionStoreV2Error>;
   readonly getTurnStartHistory: (
     threadId: ThreadId,
     runIds?: ReadonlyArray<RunId>,
+    filter?: {
+      readonly itemIds?: ReadonlyArray<string>;
+      readonly providerThreadId?: ProviderThreadId;
+    },
   ) => Effect.Effect<ReadonlyArray<OrchestrationV2TurnItem>, ProjectionStoreV2Error>;
   readonly getThreadProjection: (
     threadId: ThreadId,
@@ -1431,9 +1482,9 @@ function sortMessagesByTurnItemOrder(
   });
 }
 
-function activeLocalTurnItems(
-  projection: OrchestrationV2ThreadProjection,
-): Array<OrchestrationV2ProjectedTurnItem> {
+function activeLocalTurnItems<T extends TurnStartHistoryIndexItem>(
+  projection: HistoryProjection<T>,
+): Array<HistoryProjectedItem<T>> {
   const isVisible = createOrchestrationV2TurnItemVisibility({
     runs: projection.runs,
     attempts: projection.attempts,
@@ -1448,15 +1499,15 @@ function activeLocalTurnItems(
   }));
 }
 
-function localVisibleTurnItems(
-  projection: OrchestrationV2ThreadProjection,
-): Array<OrchestrationV2ProjectedTurnItem> {
+function localVisibleTurnItems<T extends TurnStartHistoryIndexItem>(
+  projection: HistoryProjection<T>,
+): Array<HistoryProjectedItem<T>> {
   return activeLocalTurnItems(projection);
 }
 
-function inheritedVisibleTurnItemsFromLocalItems(
-  items: ReadonlyArray<OrchestrationV2TurnItem>,
-): Array<Omit<OrchestrationV2ProjectedTurnItem, "position">> {
+function inheritedVisibleTurnItemsFromLocalItems<T extends TurnStartHistoryIndexItem>(
+  items: ReadonlyArray<T>,
+): Array<Omit<HistoryProjectedItem<T>, "position">> {
   return items.map((item) => ({
     visibility: "inherited" as const,
     sourceThreadId: item.threadId,
@@ -1474,10 +1525,10 @@ function withLocalVisibleTurnItems(
   };
 }
 
-function renumberVisibleTurnItems(
-  rows: ReadonlyArray<Omit<OrchestrationV2ProjectedTurnItem, "position">>,
+function renumberVisibleTurnItems<T extends TurnStartHistoryIndexItem>(
+  rows: ReadonlyArray<Omit<HistoryProjectedItem<T>, "position">>,
   offset = 0,
-): Array<OrchestrationV2ProjectedTurnItem> {
+): Array<HistoryProjectedItem<T>> {
   return rows.map((row, position) => ({ ...row, position: position + offset }));
 }
 
@@ -1565,11 +1616,11 @@ export function forkInheritedRunOrdinals(
   );
 }
 
-function visibleTurnItemsThroughRun(input: {
-  readonly sourceProjection: OrchestrationV2ThreadProjection;
+function visibleTurnItemsThroughRun<T extends TurnStartHistoryIndexItem>(input: {
+  readonly sourceProjection: HistoryProjection<T>;
   readonly sourceRunId: NonNullable<OrchestrationV2TurnItem["runId"]>;
   readonly forkCreatedAt: DateTime.Utc;
-}): Array<Omit<OrchestrationV2ProjectedTurnItem, "position">> {
+}): Array<Omit<HistoryProjectedItem<T>, "position">> {
   const sourceRun = input.sourceProjection.runs.find((run) => run.id === input.sourceRunId);
   if (sourceRun === undefined) {
     return [];
@@ -1614,11 +1665,11 @@ function inheritedRunFork(thread: Pick<OrchestrationV2AppThread, "forkedFrom" | 
     : null;
 }
 
-function buildVisibleTurnItems(input: {
-  readonly projection: OrchestrationV2ThreadProjection;
-  readonly sourceProjection: OrchestrationV2ThreadProjection | null;
+function buildVisibleTurnItems<T extends TurnStartHistoryIndexItem>(input: {
+  readonly projection: HistoryProjection<T>;
+  readonly sourceProjection: HistoryProjection<T> | null;
   readonly inheritedRowCount?: number;
-}): Array<OrchestrationV2ProjectedTurnItem> {
+}): Array<HistoryProjectedItem<T | Extract<OrchestrationV2TurnItem, { type: "fork" }>>> {
   const forkedFrom = inheritedRunFork(input.projection.thread);
   if (
     forkedFrom === null ||
@@ -1647,7 +1698,7 @@ function buildVisibleTurnItems(input: {
     item: row.item,
   }));
 
-  return renumberVisibleTurnItems(
+  return renumberVisibleTurnItems<T | Extract<OrchestrationV2TurnItem, { type: "fork" }>>(
     [
       ...inherited,
       {
@@ -4675,6 +4726,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
             LIMIT 1
           )
           WHERE t.deleted_at IS NULL
+            ${options.threadIds === undefined ? sql`` : sql`AND t.thread_id IN (SELECT value FROM json_each(${encodeIdList(options.threadIds)}))`}
             -- The sweep runs every scheduler tick. Without this list the latest-run
             -- lookup above sorts every run of every thread, tens of milliseconds
             -- for one long thread; only threads with a usage-limit failure qualify.
@@ -4792,6 +4844,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
           readonly include?: ReadonlyArray<string>;
           readonly exclude?: ReadonlyArray<string>;
         },
+        threadIds?: ReadonlyArray<ThreadId>,
       ) {
         const candidates = (() => {
           switch (kind) {
@@ -4951,6 +5004,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
         const rows = yield* sql<{ readonly thread_id: string }>`
           SELECT thread_id FROM orchestration_v2_projection_threads
           WHERE deleted_at IS NULL
+            ${threadIds === undefined ? sql`` : sql`AND thread_id IN (SELECT value FROM json_each(${encodeIdList(threadIds)}))`}
             AND thread_id IN (${candidates})
             ${projects?.include === undefined ? sql`` : sql`AND project_id IN (SELECT value FROM json_each(${encodeIdList(projects.include)}))`}
             ${projects?.exclude === undefined ? sql`` : sql`AND project_id NOT IN (SELECT value FROM json_each(${encodeIdList(projects.exclude)}))`}
@@ -5237,21 +5291,59 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
           ),
         );
 
+    const readHistoryIndex = Effect.fn("ProjectionStore.readHistoryIndex")(function* (
+      threadId: ThreadId,
+      allTypes = false,
+    ) {
+      const rows = yield* sql<
+        TurnStartHistoryIndexItem & { input_type: string | null; schedule_type: string | null }
+      >`SELECT turn_item_id AS id, thread_id AS threadId, run_id AS runId, node_id AS nodeId,type,ordinal,provider_thread_id AS providerThreadId,
+        CASE WHEN type = 'user_message' THEN json_extract(payload_json,'$.inputIntent') END AS inputIntent,
+        CASE WHEN type = 'user_message' THEN json_type(payload_json,'$.inputIntent') END AS input_type,
+        CASE WHEN type = 'user_message' THEN json_extract(payload_json,'$.messageId') END AS messageId,
+        CASE WHEN type = 'user_message' THEN json_extract(payload_json,'$.scheduledTaskId') END AS scheduledTaskId,
+        CASE WHEN type = 'user_message' THEN json_type(payload_json,'$.scheduledTaskId') END AS schedule_type
+        FROM orchestration_v2_projection_turn_items WHERE thread_id = ${threadId} AND (${allTypes ? 1 : 0} = 1 OR type IN (SELECT value FROM json_each(${encodeIdList(HISTORICAL_ITEM_TYPES)}))) ORDER BY ordinal,turn_item_id`;
+      return rows.map(({ input_type, schedule_type, inputIntent, scheduledTaskId, ...row }) => ({
+        ...row,
+        ...(input_type === null ? {} : { inputIntent: inputIntent! }),
+        ...(schedule_type === null ? {} : { scheduledTaskId: scheduledTaskId! }),
+      }));
+    });
+    const getTurnStartHistoryIndex: ProjectionStoreV2Shape["getTurnStartHistoryIndex"] = (
+      threadId,
+    ) =>
+      readHistoryIndex(threadId).pipe(
+        Effect.mapError((cause) => new ProjectionStoreReadError({ threadId, cause })),
+      );
     const getTurnStartHistory: ProjectionStoreV2Shape["getTurnStartHistory"] = Effect.fn(
       "ProjectionStore.getTurnStartHistory",
     )(
-      function* (threadId, runIds) {
-        const rows = yield* sql<PayloadRow>`
-          SELECT payload_json FROM orchestration_v2_projection_turn_items
-          WHERE thread_id = ${threadId}
-            AND type IN ('user_message','assistant_message','command_execution','error',
-              'run_interrupt_result','file_change','proposed_plan')
-            AND ${runIds === undefined ? sql`1` : sql`run_id IN ${sql.in(runIds)}`}
-          ORDER BY ordinal ASC, turn_item_id ASC
-        `;
-        return yield* decodeRows(decodeTurnItemPayload, threadId)(rows);
+      function* (threadId, runIds, filter) {
+        const items: OrchestrationV2TurnItem[] = [];
+        let ordinal = -1,
+          id = "";
+        for (;;) {
+          const rows = yield* sql<
+            PayloadRow & { ordinal: number; turn_item_id: string }
+          >`SELECT payload_json,ordinal,turn_item_id FROM (
+            SELECT *,SUM(bytes) OVER (ORDER BY ordinal,turn_item_id) AS cumulative,ROW_NUMBER() OVER (ORDER BY ordinal,turn_item_id) AS rn FROM (
+              SELECT payload_json,ordinal,turn_item_id,length(CAST(payload_json AS BLOB)) AS bytes FROM orchestration_v2_projection_turn_items
+              WHERE thread_id = ${threadId} AND type IN (SELECT value FROM json_each(${encodeIdList(HISTORICAL_ITEM_TYPES)}))
+              AND ${runIds === undefined ? sql`1` : sql`run_id IN ${sql.in(runIds)}`}
+              AND ${filter === undefined ? sql`1` : sql`(provider_thread_id = ${filter.providerThreadId ?? null} OR turn_item_id IN (SELECT value FROM json_each(${encodeIdList(filter.itemIds ?? [])})))`}
+              AND (ordinal,turn_item_id) > (${ordinal},${id}) ORDER BY ordinal,turn_item_id LIMIT 500
+            )
+          ) WHERE cumulative <= 4194304 OR rn = 1 ORDER BY ordinal,turn_item_id`;
+          if (!rows.length) break;
+          items.push(...(yield* decodeRows(decodeTurnItemPayload, threadId)(rows)));
+          const last = rows[rows.length - 1]!;
+          ordinal = last.ordinal;
+          id = last.turn_item_id;
+        }
+        return items;
       },
-      (effect, threadId, _runIds) =>
+      (effect, threadId) =>
         effect.pipe(Effect.mapError((cause) => new ProjectionStoreReadError({ threadId, cause }))),
     );
 
@@ -9271,6 +9363,75 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
         )
         .pipe(Effect.mapError((cause) => new ProjectionStoreReadError({ threadId, cause })));
 
+    const findWorkCandidates = Effect.fn("ProjectionStore.findWorkCandidates")(function* (
+      threadIds: ReadonlyArray<ThreadId>,
+      options: { readonly now: DateTime.Utc },
+    ) {
+      const candidates: Array<{ readonly threadId: ThreadId; readonly kind: string }> = [];
+      for (const kind of [
+        "queued-runs",
+        "delegated-completions",
+        "subagent-results",
+        "restart-continuations",
+        "runtime",
+      ] as const) {
+        for (const threadId of yield* getRecoveryThreadIds(kind, undefined, threadIds))
+          candidates.push({ threadId, kind });
+      }
+      for (const candidate of yield* getLimitRecoveryCandidates({
+        ...options,
+        autoResume: true,
+        snooze: true,
+        threadIds,
+      }))
+        candidates.push({ threadId: candidate.id, kind: "usage-limit" });
+      return candidates;
+    });
+    const getInheritedHistoryItems = Effect.fn("ProjectionStore.getInheritedHistoryItems")(
+      function* (threadId: ThreadId) {
+        const projection = yield* getThreadProjection(threadId);
+        return projection.visibleTurnItems
+          .filter((row) => row.visibility === "inherited")
+          .map((row) => row.item);
+      },
+    );
+
+    const getInheritedHistoryIndex = Effect.fn("ProjectionStore.getInheritedHistoryIndex")(
+      function* (threadId: ThreadId) {
+        const read = Effect.fn("ProjectionStore.readInheritedHistoryIndex")(function* (
+          id: ThreadId,
+          seen: ReadonlySet<ThreadId>,
+        ): Effect.fn.Return<HistoryProjection<TurnStartHistoryIndexItem>, ProjectionStoreV2Error> {
+          const base = yield* getThreadRecords(id, ["runs", "attempts"]);
+          const turnItems = yield* readHistoryIndex(id, true).pipe(
+            Effect.mapError((cause) => new ProjectionStoreReadError({ threadId: id, cause })),
+          );
+          const projection: HistoryProjection<TurnStartHistoryIndexItem> = {
+            thread: base.thread,
+            runs: base.runs,
+            attempts: base.attempts,
+            turnItems,
+            visibleTurnItems: [],
+          };
+          const fork = inheritedRunFork(base.thread);
+          if (!fork || seen.has(id) || seen.has(fork.threadId))
+            return { ...projection, visibleTurnItems: localVisibleTurnItems(projection) };
+          const source = yield* read(fork.threadId, new Set([...seen, id])).pipe(
+            Effect.catchTags({ ProjectionStoreThreadNotFoundError: () => Effect.succeed(null) }),
+          );
+          return {
+            ...projection,
+            visibleTurnItems: buildVisibleTurnItems({ projection, sourceProjection: source }),
+          };
+        });
+        const projection = yield* read(threadId, new Set());
+        return projection.visibleTurnItems
+          .filter((row) => row.visibility === "inherited")
+          .map((row) => row.item)
+          .filter((item) => (HISTORICAL_ITEM_TYPES as ReadonlyArray<string>).includes(item.type));
+      },
+    );
+
     const readOnReader =
       <Args extends ReadonlyArray<unknown>, A, E, R>(
         method: (...args: Args) => Effect.Effect<A, E, R>,
@@ -9280,6 +9441,10 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
 
     return {
       apply,
+      findWorkCandidates,
+      getInheritedHistoryItems: readOnReader(getInheritedHistoryItems),
+      getInheritedHistoryIndex: readOnReader(getInheritedHistoryIndex),
+      getTurnStartHistoryIndex: readOnReader(getTurnStartHistoryIndex),
       getAgentAwarenessSnapshot: readOnReader(getAgentAwarenessSnapshot),
       getShellSnapshot: readOnReader(getShellSnapshot),
       getPullRequestSnapshot: readOnReader(getPullRequestSnapshot),

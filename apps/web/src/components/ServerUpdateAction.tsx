@@ -201,7 +201,7 @@ export function ServerUpdatesAction({
       if (desktopTargets.length > 0) {
         const confirmed =
           (await requestConfirmDialog(
-            `Update the T3 Code desktop apps on ${desktopTargets.map((target) => target.serverLabel).join(", ")}? They will close and relaunch on those machines.`,
+            `Update the U4 Code desktop apps on ${desktopTargets.map((target) => target.serverLabel).join(", ")}? They will close and relaunch on those machines.`,
             { initialFocus: "confirm" },
           )) ?? true;
         if (!confirmed) return;
@@ -308,7 +308,7 @@ export function ServerUpdateAction({
     if (isDesktopAppUpdate) {
       const confirmed =
         (await requestConfirmDialog(
-          `Update the T3 Code desktop app that runs the ${serverLabel}? It will close and relaunch on that machine.`,
+          `Update the U4 Code desktop app that runs the ${serverLabel}? It will close and relaunch on that machine.`,
           { initialFocus: "confirm" },
         )) ?? true;
       if (!confirmed) {
@@ -351,6 +351,13 @@ export function ServerUpdateAction({
 
   const manualCommand =
     selfUpdate === null ? manualServerUpdateCommand(targetVersion, installation) : null;
+  if (selfUpdate === null && manualCommand === null) {
+    return (
+      <span className="text-muted-foreground text-xs">
+        Install a verified U4 Code build on that machine to update this server.
+      </span>
+    );
+  }
   const actionLabel =
     manualCommand !== null
       ? updatesInstall

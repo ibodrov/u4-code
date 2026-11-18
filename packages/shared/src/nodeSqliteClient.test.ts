@@ -28,6 +28,7 @@ const startedWorkers = vi.hoisted((): Array<NodeWorkerThreads.Worker> => []);
 const workerExits = vi.hoisted(() => new WeakMap<NodeWorkerThreads.Worker, Promise<void>>());
 const silentWorkers = vi.hoisted(() => ({ on: false, readyOnTerminate: false }));
 const failingWorkers = vi.hoisted(() => ({ message: undefined as string | undefined }));
+const controlFailures = vi.hoisted(() => ({ rollback: false, lostCommitAck: false }));
 const checkpointWorkers = vi.hoisted((): Array<NodeWorkerThreads.Worker> => []);
 
 vi.mock("node:worker_threads", async (importOriginal) => {
@@ -41,6 +42,36 @@ vi.mock("node:worker_threads", async (importOriginal) => {
             ? [`throw new Error(${JSON.stringify(failingWorkers.message)});`, { eval: true }]
             : args) as ConstructorParameters<typeof actual.Worker>),
       );
+      const commitRequests = new Set<number>();
+      this.on("message", (reply: { id?: number; rows?: unknown; error?: unknown }) => {
+        if (
+          reply.id !== undefined &&
+          commitRequests.delete(reply.id) &&
+          reply.error === undefined
+        ) {
+          delete reply.rows;
+          reply.error = { operation: "execute", message: "injected lost COMMIT acknowledgement" };
+        }
+      });
+      const post = this.postMessage.bind(this);
+      this.postMessage = (
+        value: unknown,
+        ...rest: Parameters<typeof post> extends [unknown, ...infer R] ? R : never
+      ) => {
+        const request = value as { id?: number; sql?: string };
+        if (request.sql === "COMMIT" && controlFailures.lostCommitAck && request.id !== undefined)
+          commitRequests.add(request.id);
+        if (request.sql === "ROLLBACK" && controlFailures.rollback) {
+          queueMicrotask(() =>
+            this.emit("message", {
+              id: request.id,
+              error: { operation: "execute", message: "injected ROLLBACK failure" },
+            }),
+          );
+          return;
+        }
+        post(value, ...rest);
+      };
       startedWorkers.push(this);
       workerExits.set(this, new Promise((resolve) => this.once("exit", () => resolve())));
       if (args[1]?.workerData?.frames !== undefined) checkpointWorkers.push(this);
@@ -975,4 +1006,142 @@ it.effect("keeps writes moving while an outside reader pins the WAL, then trims 
       assert.deepEqual(yield* sql`SELECT COUNT(*) FROM blobs`.values, [[23]]);
     }).pipe(Effect.provide(SqliteClient.layer({ filename, writerWorker: true })));
   }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+);
+
+it.effect(
+  "rolls back a failed COMMIT before another writer or cached read can use the connection",
+  () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const directory = yield* fs.makeTempDirectoryScoped({ prefix: "t3-sqlite-commit-cleanup-" });
+      yield* Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`PRAGMA journal_mode = WAL`;
+        yield* sql`PRAGMA foreign_keys = ON`;
+        yield* sql`CREATE TABLE parents(id INTEGER PRIMARY KEY)`;
+        yield* sql`CREATE TABLE children(id INTEGER REFERENCES parents(id) DEFERRABLE INITIALLY DEFERRED)`;
+        const cached = sql`SELECT id FROM children`;
+        assert.deepEqual(yield* cached, []);
+        const result = yield* Effect.exit(
+          sql.withTransaction(sql`INSERT INTO children VALUES (7)`),
+        );
+        assert.isTrue(Exit.isFailure(result));
+        assert.deepEqual(yield* cached, []);
+        assert.deepEqual(yield* SqliteClient.readOnly(sql`SELECT id FROM children`), []);
+        yield* sql.withTransaction(sql`INSERT INTO parents VALUES (7)`);
+        yield* sql`INSERT INTO children VALUES (7)`;
+        assert.deepEqual(yield* cached, [{ id: 7 }]);
+      }).pipe(
+        Effect.provide(
+          SqliteClient.layer({
+            filename: path.join(directory, "state.sqlite"),
+            writerWorker: true,
+            readerWorker: true,
+          }),
+        ),
+      );
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+);
+
+it.effect.each(["commit", "body", "lost-ack", "savepoint"] as const)(
+  "quarantines failed transaction cleanup and recovers under the writer permit: %s",
+  (scenario) =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const directory = yield* fs.makeTempDirectoryScoped({ prefix: "t3-sqlite-poison-" });
+      yield* Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`PRAGMA journal_mode = WAL`;
+        yield* sql`PRAGMA foreign_keys = ON`;
+        yield* sql`CREATE TABLE parents(id INTEGER PRIMARY KEY)`;
+        yield* sql`CREATE TABLE children(id INTEGER REFERENCES parents(id) DEFERRABLE INITIALLY DEFERRED)`;
+        yield* sql`CREATE TABLE ordinary(id INTEGER)`;
+        const cached = sql`SELECT id FROM children`;
+        yield* cached;
+        controlFailures.rollback = scenario !== "lost-ack";
+        controlFailures.lostCommitAck = scenario === "lost-ack";
+        const body = Effect.gen(function* () {
+          if (scenario === "lost-ack") yield* sql`INSERT INTO parents VALUES (7)`;
+          yield* sql`INSERT INTO children VALUES (7)`;
+          if (scenario === "body") return yield* Effect.fail("body-failed");
+          if (scenario === "savepoint") {
+            yield* sql.withTransaction(Effect.fail("nested-failed")).pipe(Effect.ignore);
+            return yield* Effect.fail("outer-failed");
+          }
+        });
+        const failed = yield* Effect.exit(sql.withTransaction(body));
+        assert.isTrue(Exit.isFailure(failed));
+        assert.deepEqual(
+          yield* SqliteClient.readOnly(cached),
+          scenario === "lost-ack" ? [{ id: 7 }] : [],
+        );
+        if (scenario !== "lost-ack") {
+          assert.isTrue(Exit.isFailure(yield* Effect.exit(cached)));
+          assert.isTrue(Exit.isFailure(yield* Effect.exit(sql`INSERT INTO ordinary VALUES (1)`)));
+          assert.isTrue(
+            Exit.isFailure(
+              yield* Effect.exit(sql.withTransaction(sql`INSERT INTO ordinary VALUES (2)`)),
+            ),
+          );
+          assert.deepEqual(yield* SqliteClient.readOnly(sql`SELECT id FROM ordinary`), []);
+        }
+        controlFailures.rollback = false;
+        controlFailures.lostCommitAck = false;
+        assert.deepEqual(yield* cached, scenario === "lost-ack" ? [{ id: 7 }] : []);
+        yield* sql.withTransaction(sql`INSERT INTO ordinary VALUES (3)`);
+        yield* sql`INSERT INTO ordinary VALUES (4)`;
+        assert.deepEqual(yield* SqliteClient.readOnly(sql`SELECT id FROM ordinary ORDER BY id`), [
+          { id: 3 },
+          { id: 4 },
+        ]);
+        assert.deepEqual(yield* sql`PRAGMA foreign_keys`.values, [[1]]);
+      }).pipe(
+        Effect.provide(
+          SqliteClient.layer({
+            filename: path.join(directory, "state.sqlite"),
+            writerWorker: true,
+            readerWorker: true,
+            checkpointWorker: false,
+          }),
+        ),
+      );
+    }).pipe(
+      Effect.ensuring(
+        Effect.sync(() => {
+          controlFailures.rollback = false;
+          controlFailures.lostCommitAck = false;
+        }),
+      ),
+      Effect.scoped,
+      Effect.provide(NodeServices.layer),
+    ),
+);
+
+it.effect.each([false, true] as const)(
+  "controls the private checkpoint worker without changing ordinary WAL writes: %s",
+  (checkpointWorker) =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const directory = yield* fs.makeTempDirectoryScoped({ prefix: "t3-private-checkpoint-" });
+      const before = checkpointWorkers.length;
+      yield* Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`PRAGMA journal_mode = WAL`;
+        yield* sql`CREATE TABLE entries(value INTEGER)`;
+        yield* sql`INSERT INTO entries VALUES (1)`;
+        assert.deepEqual(yield* sql`SELECT value FROM entries`.values, [[1]]);
+        assert.equal(checkpointWorkers.length - before, checkpointWorker ? 1 : 0);
+      }).pipe(
+        Effect.provide(
+          SqliteClient.layer({
+            filename: path.join(directory, "state.sqlite"),
+            writerWorker: true,
+            checkpointWorker,
+          }),
+        ),
+      );
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );

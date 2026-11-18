@@ -1,3 +1,5 @@
+import * as T3ImportService from "./u4/t3Import/T3ImportService.ts";
+import { T3ImportError } from "@t3tools/contracts";
 import { OrchestrationDispatchCommandError } from "@t3tools/contracts";
 // @effect-diagnostics-next-line nodeBuiltinImport:off -- A synchronous digest inside the pure provider mapping.
 import * as NodeCrypto from "node:crypto";
@@ -1540,6 +1542,7 @@ export const layerWsRpc = (
       const lifecycleEvents = yield* ServerLifecycleEvents.ServerLifecycleEvents;
       const storageCleanup = yield* StorageCleanup.StorageCleanup;
       const databaseStorage = yield* DatabaseStorage.DatabaseStorage;
+      const t3Import = yield* T3ImportService.T3ImportService;
       const serverSettings = yield* ServerSettings.ServerSettingsService;
       const secretResolver = yield* SecretResolver.SecretResolver;
       const peerLinks = yield* PeerLinks.PeerLinks;
@@ -1685,7 +1688,7 @@ export const layerWsRpc = (
             if (importedThread !== null) {
               return yield* new AcpRegistryOperationError({
                 reason: "session_delete_failed",
-                message: "Delete the imported T3 thread before deleting its native ACP session.",
+                message: "Delete the imported U4 thread before deleting its native ACP session.",
               });
             }
             yield* manager.deleteSession({
@@ -2657,6 +2660,24 @@ export const layerWsRpc = (
           }),
         [WS_METHODS.serverRunStorageCleanup]: () => storageCleanup.runNow,
         [WS_METHODS.serverGetStorageCleanupReport]: () => storageCleanup.reports,
+        [WS_METHODS.u4T3ImportOpen]: (input) =>
+          t3Import.open(input).pipe(Effect.mapError(T3ImportError.forClient)),
+        [WS_METHODS.u4T3ImportGetSession]: (input) =>
+          t3Import.getSession(input).pipe(Effect.mapError(T3ImportError.forClient)),
+        [WS_METHODS.u4T3ImportListThreads]: (input) =>
+          t3Import.listThreads(input).pipe(Effect.mapError(T3ImportError.forClient)),
+        [WS_METHODS.u4T3ImportPreview]: (input) =>
+          t3Import.preview(input).pipe(Effect.mapError(T3ImportError.forClient)),
+        [WS_METHODS.u4T3ImportPreviewPage]: (input) =>
+          t3Import.previewPage(input).pipe(Effect.mapError(T3ImportError.forClient)),
+        [WS_METHODS.u4T3ImportStart]: (input) =>
+          t3Import.start(input).pipe(Effect.mapError(T3ImportError.forClient)),
+        [WS_METHODS.u4T3ImportGetJob]: (input) =>
+          t3Import.getJob(input).pipe(Effect.mapError(T3ImportError.forClient)),
+        [WS_METHODS.u4T3ImportCancel]: (input) =>
+          t3Import.cancel(input).pipe(Effect.mapError(T3ImportError.forClient)),
+        [WS_METHODS.u4T3ImportClose]: (input) =>
+          t3Import.close(input).pipe(Effect.mapError(T3ImportError.forClient)),
         [WS_METHODS.serverGetDatabaseStorage]: () => databaseStorage.status,
         [WS_METHODS.serverReclaimDatabaseSpace]: () => databaseStorage.requestReclaim,
         [WS_METHODS.peerLinksList]: (_input) =>

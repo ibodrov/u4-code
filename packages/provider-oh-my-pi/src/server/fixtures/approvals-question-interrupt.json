@@ -1,0 +1,6469 @@
+[
+  {
+    "direction": "in",
+    "frame": {
+      "type": "ready",
+      "protocolVersion": 1,
+      "supportedProtocolVersions": [1, 2],
+      "maxFrameBytes": 1048576,
+      "maxReassembledFrameBytes": 67108864
+    }
+  },
+  {
+    "direction": "out",
+    "frame": {
+      "id": "negotiate_protocol",
+      "type": "negotiate_protocol",
+      "protocolVersion": 2
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "extension_ui_request",
+      "id": "15cd113bbbf2503d",
+      "method": "setWidget",
+      "widgetKey": "autoresearch"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "advisor_cost_changed"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "available_commands_update",
+      "commands": [
+        {
+          "name": "security",
+          "description": "Plan, run, inspect, import, and compare OMP-native security scans",
+          "input": {
+            "hint": "<plan|scan|status|cancel|scans|show|import|export|validate|compare|disposition>"
+          },
+          "subcommands": [
+            {
+              "name": "plan",
+              "description": "Create an immutable security scan plan"
+            },
+            {
+              "name": "scan",
+              "description": "Start a planned or newly planned native scan"
+            },
+            {
+              "name": "status",
+              "description": "Show native scan operation status"
+            },
+            {
+              "name": "cancel",
+              "description": "Cancel a running native scan"
+            },
+            {
+              "name": "scans",
+              "description": "List stored project security scans"
+            },
+            {
+              "name": "show",
+              "description": "Render a scan or security:// resource"
+            },
+            {
+              "name": "import",
+              "description": "Import SARIF or a Codex Security bundle"
+            },
+            {
+              "name": "export",
+              "description": "Export a canonical bundle, SARIF, or report"
+            },
+            {
+              "name": "validate",
+              "description": "Validate one finding with OMP-native tools"
+            },
+            {
+              "name": "compare",
+              "description": "Compare finding lineage across two scans"
+            },
+            {
+              "name": "disposition",
+              "description": "Set a finding disposition with rationale"
+            }
+          ],
+          "source": "builtin"
+        },
+        {
+          "name": "model",
+          "aliases": ["models"],
+          "description": "Show current model selection",
+          "source": "builtin"
+        },
+        {
+          "name": "switch",
+          "description": "Switch model for this session only",
+          "input": {
+            "hint": "[model]"
+          },
+          "source": "builtin"
+        },
+        {
+          "name": "fast",
+          "description": "Toggle fast mode",
+          "input": {
+            "hint": "[on|ultra|off|status]"
+          },
+          "subcommands": [
+            {
+              "name": "on",
+              "description": "Enable fast mode (priority tier)"
+            },
+            {
+              "name": "ultra",
+              "description": "Enable Ultrafast (OpenAI API, or Codex models that offer it)"
+            },
+            {
+              "name": "off",
+              "description": "Disable fast mode"
+            },
+            {
+              "name": "status",
+              "description": "Show fast mode status"
+            }
+          ],
+          "source": "builtin"
+        },
+        {
+          "name": "slow",
+          "description": "Toggle slow mode",
+          "input": {
+            "hint": "[on|off|status]"
+          },
+          "subcommands": [
+            {
+              "name": "on",
+              "description": "Flex tier, or Anthropic low priority at the session limit (auto)"
+            },
+            {
+              "name": "off",
+              "description": "Standard service; stop Anthropic low priority"
+            },
+            {
+              "name": "status",
+              "description": "Show slow mode status"
+            }
+          ],
+          "source": "builtin"
+        },
+        {
+          "name": "skillful",
+          "description": "Toggle skill listing",
+          "input": {
+            "hint": "[on|off|status]"
+          },
+          "subcommands": [
+            {
+              "name": "on",
+              "description": "List skills in the prompt for this session"
+            },
+            {
+              "name": "off",
+              "description": "Omit the skills listing for this session"
+            },
+            {
+              "name": "status",
+              "description": "Show skill listing status"
+            }
+          ],
+          "source": "builtin"
+        },
+        {
+          "name": "extended-context",
+          "description": "Toggle extended context",
+          "input": {
+            "hint": "[on|off|status]"
+          },
+          "subcommands": [
+            {
+              "name": "on",
+              "description": "Enable larger context windows"
+            },
+            {
+              "name": "off",
+              "description": "Use default or standard-pricing context windows"
+            },
+            {
+              "name": "status",
+              "description": "Show extended context status"
+            }
+          ],
+          "source": "builtin"
+        },
+        {
+          "name": "computer",
+          "description": "Toggle computer use",
+          "input": {
+            "hint": "[on|off|status]"
+          },
+          "subcommands": [
+            {
+              "name": "on",
+              "description": "Enable computer use for this session"
+            },
+            {
+              "name": "off",
+              "description": "Disable computer use for this session"
+            },
+            {
+              "name": "status",
+              "description": "Show computer use status"
+            }
+          ],
+          "source": "builtin"
+        },
+        {
+          "name": "ratchet",
+          "description": "Build (or reuse) an eval for an LLM flow, then hillclimb it unattended",
+          "input": {
+            "hint": "[flow and goal]"
+          },
+          "source": "builtin"
+        },
+        {
+          "name": "prewalk",
+          "description": "Arm, restart, or cancel prewalk",
+          "input": {
+            "hint": "[into] | restart [from] [into] | off"
+          },
+          "subcommands": [
+            {
+              "name": "restart",
+              "description": "Return to the planning model and re-arm the handoff (default prewalk.from \u2192 prewalk.into)",
+              "usage": "[from] [into]"
+            },
+            {
+              "name": "off",
+              "description": "Cancel this session's handoff without changing the active model"
+            }
+          ],
+          "source": "builtin"
+        },
+        {
+          "name": "modelpreset",
+          "description": "Manage model presets",
+          "input": {
+            "hint": "[list|save|switch|delete] [name]"
+          },
+          "subcommands": [
+            {
+              "name": "list",
+              "description": "List saved presets"
+            },
+            {
+              "name": "save",
+              "description": "Save the current role models and thinking level",
+              "usage": "<name>"
+            },
+            {
+              "name": "switch",
+              "description": "Apply a saved preset",
+              "usage": "<name>"
+            },
+            {
+              "name": "delete",
+              "description": "Delete a saved preset",
+              "usage": "<name>"
+            }
+          ],
+          "source": "builtin"
+        },
+        {
+          "name": "effort",
+          "description": "Set or show reasoning effort (thinking level, intelligence)",
+          "input": {
+            "hint": "[level]"
+          },
+          "subcommands": [
+            {
+              "name": "off",
+              "description": "No reasoning"
+            },
+            {
+              "name": "minimal",
+              "description": "Very brief reasoning (~1k tokens)"
+            },
+            {
+              "name": "low",
+              "description": "Light reasoning (~2k tokens)"
+            },
+            {
+              "name": "medium",
+              "description": "Moderate reasoning (~8k tokens)"
+            },
+            {
+              "name": "high",
+              "description": "Deep reasoning (~16k tokens)"
+            },
+            {
+              "name": "xhigh",
+              "description": "Extended reasoning (~32k tokens)"
+            },
+            {
+              "name": "max",
+              "description": "Maximum reasoning the model supports"
+            },
+            {
+              "name": "auto",
+              "description": "Auto-detect per prompt"
+            }
+          ],
+          "source": "builtin"
+        },
+        {
+          "name": "advisor",
+          "description": "Toggle advisor",
+          "input": {
+            "hint": "[on|off|status|dump [raw]|configure]"
+          },
+          "subcommands": [
+            {
+              "name": "on",
+              "description": "Enable the advisor"
+            },
+            {
+              "name": "off",
+              "description": "Disable the advisor"
+            },
+            {
+              "name": "status",
+              "description": "Show advisor status"
+            },
+            {
+              "name": "dump",
+              "description": "Copy the advisor's transcript to clipboard",
+              "usage": "[raw]"
+            },
+            {
+              "name": "configure",
+              "description": "Open the advisor configuration editor (TUI)"
+            }
+          ],
+          "source": "builtin"
+        },
+        {
+          "name": "export",
+          "description": "Export session to HTML file",
+          "input": {
+            "hint": "[--themes] [path]"
+          },
+          "source": "builtin"
+        },
+        {
+          "name": "trace",
+          "description": "Open this session's trace in the stats dashboard",
+          "source": "builtin"
+        },
+        {
+          "name": "dump",
+          "description": "Return full transcript as plain text, with LLM request JSON path",
+          "input": {
+            "hint": "[all|anon]"
+          },
+          "subcommands": [
+            {
+              "name": "all",
+              "description": "Write a zip with the main transcript, LLM request JSON, and one file per subagent"
+            },
+            {
+              "name": "anon",
+              "description": "Write a zip of anonymized session JSONL (contents redacted, metadata kept) plus subagents"
+            }
+          ],
+          "source": "builtin"
+        },
+        {
+          "name": "share",
+          "description": "Share session via an encrypted link (share server or secret gist)",
+          "source": "builtin"
+        },
+        {
+          "name": "browser",
+          "description": "Toggle browser eval-prelude headless vs visible mode",
+          "input": {
+            "hint": "[headless|visible]"
+          },
+          "subcommands": [
+            {
+              "name": "headless",
+              "description": "Switch to headless mode"
+            },
+            {
+              "name": "visible",
+              "description": "Switch to visible mode"
+            }
+          ],
+          "source": "builtin"
+        },
+        {
+          "name": "todo",
+          "description": "Manage todos",
+          "input": {
+            "hint": "<subcommand>"
+          },
+          "subcommands": [
+            {
+              "name": "edit",
+              "description": "Open todos in $EDITOR (Markdown round-trip)"
+            },
+            {
+              "name": "copy",
+              "description": "Copy todos as Markdown to clipboard"
+            },
+            {
+              "name": "expand",
+              "description": "Show every phase and task in the HUD"
+            },
+            {
+              "name": "collapse",
+              "description": "Restore the bounded HUD preview"
+            },
+            {
+              "name": "export",
+              "description": "Write todos as Markdown to a file (default: TODO.md)",
+              "usage": "[<path>]"
+            },
+            {
+              "name": "import",
+              "description": "Replace todos from a Markdown file (default: TODO.md)",
+              "usage": "[<path>]"
+            },
+            {
+              "name": "append",
+              "description": "Append a task; phase fuzzy-matched or auto-created",
+              "usage": "[<phase>] <task...>"
+            },
+            {
+              "name": "start",
+              "description": "Mark task in_progress (fuzzy-matched)",
+              "usage": "<task>"
+            },
+            {
+              "name": "done",
+              "description": "Mark task/phase/all completed (fuzzy-matched)",
+              "usage": "[<task|phase>]"
+            },
+            {
+              "name": "drop",
+              "description": "Mark task/phase/all abandoned (fuzzy-matched)",
+              "usage": "[<task|phase>]"
+            },
+            {
+              "name": "rm",
+              "description": "Remove task/phase/all (fuzzy-matched)",
+              "usage": "[<task|phase>]"
+            }
+          ],
+          "source": "builtin"
+        },
+        {
+          "name": "session",
+          "description": "Show or configure the current session",
+          "input": {
+            "hint": "[info|delete|pin [account]]"
+          },
+          "subcommands": [
+            {
+              "name": "info",
+              "description": "Show session info and stats"
+            },
+            {
+              "name": "delete",
+              "description": "Delete current session and return to selector"
+            },
+            {
+              "name": "pin",
+              "description": "Pin a stored OAuth account to the current provider for this session",
+              "usage": "[account]"
+            }
+          ],
+          "source": "builtin"
+        },
+        {
+          "name": "jobs",
+          "description": "Show background jobs",
+          "input": {
+            "hint": "[full|kill <id>|kill all]"
+          },
+          "subcommands": [
+            {
+              "name": "full",
+              "description": "Show full, untruncated command lines"
+            },
+            {
+              "name": "kill",
+              "description": "Cancel a running background job",
+              "usage": "<id>|all"
+            }
+          ],
+          "source": "builtin"
+        },
+        {
+          "name": "usage",
+          "description": "Show token usage",
+          "input": {
+            "hint": "[show|reset [provider/credential-id|provider/active]]"
+          },
+          "subcommands": [
+            {
+              "name": "show",
+              "description": "Show provider usage and limits"
+            },
+            {
+              "name": "reset",
+              "description": "Spend a saved provider rate-limit reset",
+              "usage": "[provider/credential-id|provider/active]"
+            }
+          ],
+          "source": "builtin"
+        },
+        {
+          "name": "stats",
+          "description": "Launch the local stats dashboard",
+          "input": {
+            "hint": "[--port <port>] [--host <host>]"
+          },
+          "source": "builtin"
+        },
+        {
+          "name": "changelog",
+          "description": "Show changelog",
+          "input": {
+            "hint": "[full|last [N]]"
+          },
+          "subcommands": [
+            {
+              "name": "full",
+              "description": "Show complete changelog"
+            },
+            {
+              "name": "last",
+              "description": "Show the last N releases (default 1)",
+              "usage": "[N]"
+            }
+          ],
+          "source": "builtin"
+        },
+        {
+          "name": "tools",
+          "description": "Show available tools",
+          "source": "builtin"
+        },
+        {
+          "name": "context",
+          "description": "Show context usage",
+          "source": "builtin"
+        },
+        {
+          "name": "mcp",
+          "description": "Manage MCP servers",
+          "input": {
+            "hint": "<subcommand>"
+          },
+          "subcommands": [
+            {
+              "name": "add",
+              "description": "Add a new MCP server",
+              "usage": "<name> [--scope project|user] [--url <url>] [-- <command...>]"
+            },
+            {
+              "name": "list",
+              "description": "List all configured MCP servers"
+            },
+            {
+              "name": "remove",
+              "description": "Remove an MCP server",
+              "usage": "<name> [--scope project|user]"
+            },
+            {
+              "name": "test",
+              "description": "Test connection to a server",
+              "usage": "<name>"
+            },
+            {
+              "name": "reauth",
+              "description": "Reauthorize OAuth for a server",
+              "usage": "<name>"
+            },
+            {
+              "name": "unauth",
+              "description": "Remove OAuth auth from a server",
+              "usage": "<name>"
+            },
+            {
+              "name": "enable",
+              "description": "Enable an MCP server",
+              "usage": "<name>"
+            },
+            {
+              "name": "disable",
+              "description": "Disable an MCP server",
+              "usage": "<name>"
+            },
+            {
+              "name": "smithery-search",
+              "description": "Search Smithery registry and deploy an MCP server",
+              "usage": "<keyword> [--scope project|user] [--limit <1-100>] [--semantic]"
+            },
+            {
+              "name": "smithery-login",
+              "description": "Login to Smithery and cache API key"
+            },
+            {
+              "name": "smithery-logout",
+              "description": "Remove cached Smithery API key"
+            },
+            {
+              "name": "reconnect",
+              "description": "Reconnect to a specific MCP server",
+              "usage": "<name>"
+            },
+            {
+              "name": "reload",
+              "description": "Force reload MCP runtime tools"
+            },
+            {
+              "name": "resources",
+              "description": "List available resources from connected servers"
+            },
+            {
+              "name": "prompts",
+              "description": "List available prompts from connected servers"
+            },
+            {
+              "name": "notifications",
+              "description": "Show notification capabilities and subscriptions"
+            },
+            {
+              "name": "help",
+              "description": "Show help message"
+            }
+          ],
+          "source": "builtin"
+        },
+        {
+          "name": "ssh",
+          "description": "Manage SSH connections",
+          "input": {
+            "hint": "<subcommand>"
+          },
+          "subcommands": [
+            {
+              "name": "add",
+              "description": "Add an SSH host",
+              "usage": "<name> --host <host> [--user <user>] [--port <port>] [--key <keyPath>] [--scope project|user]"
+            },
+            {
+              "name": "list",
+              "description": "List all configured SSH hosts"
+            },
+            {
+              "name": "remove",
+              "description": "Remove an SSH host",
+              "usage": "<name> [--scope project|user]"
+            },
+            {
+              "name": "help",
+              "description": "Show help message"
+            }
+          ],
+          "source": "builtin"
+        },
+        {
+          "name": "fresh",
+          "description": "Reset provider stream state without changing the local transcript",
+          "source": "builtin"
+        },
+        {
+          "name": "compact",
+          "description": "Compact the conversation",
+          "input": {
+            "hint": "[soft|remote|snapcompact] [focus]"
+          },
+          "subcommands": [
+            {
+              "name": "soft",
+              "description": "Summarize locally with the active model (skip server compaction)",
+              "usage": "[focus]"
+            },
+            {
+              "name": "remote",
+              "description": "Summarize via OpenAI-compatible server compaction, then fall back to a local summary",
+              "usage": "[focus]"
+            },
+            {
+              "name": "snapcompact",
+              "description": "Archive history onto dense bitmap images the model reads back (no LLM call)"
+            }
+          ],
+          "source": "builtin"
+        },
+        {
+          "name": "shake",
+          "description": "Shake heavy content out of the conversation context",
+          "input": {
+            "hint": "[elide|images|thinking]"
+          },
+          "subcommands": [
+            {
+              "name": "elide",
+              "description": "Strip tool results + large blocks (default)"
+            },
+            {
+              "name": "images",
+              "description": "Strip image blocks"
+            },
+            {
+              "name": "thinking",
+              "description": "Drop all thinking blocks"
+            }
+          ],
+          "source": "builtin"
+        },
+        {
+          "name": "handoff",
+          "description": "Summarize the session into a handoff document and compact in place",
+          "input": {
+            "hint": "[focus instructions]"
+          },
+          "source": "builtin"
+        },
+        {
+          "name": "pin",
+          "description": "Pin or unpin a session at the top of the resume list",
+          "input": {
+            "hint": "[session id]"
+          },
+          "source": "builtin"
+        },
+        {
+          "name": "retry",
+          "description": "Retry the last failed agent turn",
+          "source": "builtin"
+        },
+        {
+          "name": "memory",
+          "description": "Manage memory",
+          "input": {
+            "hint": "<subcommand>"
+          },
+          "subcommands": [
+            {
+              "name": "view",
+              "description": "Show current memory injection payload"
+            },
+            {
+              "name": "stats",
+              "description": "Show memory backend statistics"
+            },
+            {
+              "name": "diagnose",
+              "description": "Run memory backend diagnostics"
+            },
+            {
+              "name": "queue",
+              "description": "Show pending memory deltas awaiting consolidation"
+            },
+            {
+              "name": "sync",
+              "description": "Run memory consolidation now"
+            },
+            {
+              "name": "clear",
+              "description": "Clear persisted memory data and artifacts"
+            },
+            {
+              "name": "reset",
+              "description": "Alias for clear"
+            },
+            {
+              "name": "enqueue",
+              "description": "Enqueue memory consolidation maintenance"
+            },
+            {
+              "name": "rebuild",
+              "description": "Alias for enqueue"
+            },
+            {
+              "name": "mm list",
+              "description": "List mental models on the active bank"
+            },
+            {
+              "name": "mm show",
+              "description": "Show one mental model (id required)"
+            },
+            {
+              "name": "mm refresh",
+              "description": "Refresh auto-refresh models bank-wide, or one model by id"
+            },
+            {
+              "name": "mm history",
+              "description": "Diff the change history of a mental model"
+            },
+            {
+              "name": "mm seed",
+              "description": "Create any built-in mental models that are missing"
+            },
+            {
+              "name": "mm delete",
+              "description": "Delete a mental model from the bank (id required)"
+            },
+            {
+              "name": "mm reload",
+              "description": "Re-pull the cached <mental_models> block"
+            }
+          ],
+          "source": "builtin"
+        },
+        {
+          "name": "rename",
+          "description": "Rename the current session (omit title to generate)",
+          "input": {
+            "hint": "[title]"
+          },
+          "source": "builtin"
+        },
+        {
+          "name": "move",
+          "description": "Move the current session to a different directory",
+          "input": {
+            "hint": "[<path>]"
+          },
+          "source": "builtin"
+        },
+        {
+          "name": "wt",
+          "aliases": ["worktree"],
+          "description": "Move this session into a new worktree, changes included",
+          "input": {
+            "hint": "[<branch>]"
+          },
+          "source": "builtin"
+        },
+        {
+          "name": "add-dir",
+          "description": "Add a workspace directory to this session",
+          "input": {
+            "hint": "<path>"
+          },
+          "source": "builtin"
+        },
+        {
+          "name": "remove-dir",
+          "description": "Remove a workspace directory from this session",
+          "input": {
+            "hint": "<path>"
+          },
+          "source": "builtin"
+        },
+        {
+          "name": "dirs",
+          "description": "List this session's workspace directories",
+          "source": "builtin"
+        },
+        {
+          "name": "marketplace",
+          "description": "Manage plugins from marketplaces",
+          "input": {
+            "hint": "<subcommand>"
+          },
+          "subcommands": [
+            {
+              "name": "add",
+              "description": "Add a marketplace source",
+              "usage": "<source>"
+            },
+            {
+              "name": "remove",
+              "description": "Remove a marketplace source",
+              "usage": "<name>"
+            },
+            {
+              "name": "update",
+              "description": "Update marketplace catalog(s)",
+              "usage": "[name]"
+            },
+            {
+              "name": "list",
+              "description": "List configured marketplaces"
+            },
+            {
+              "name": "discover",
+              "description": "Browse available plugins",
+              "usage": "[marketplace]"
+            },
+            {
+              "name": "install",
+              "description": "Install a plugin (interactive browser if no args)",
+              "usage": "[--force] [name@marketplace]"
+            },
+            {
+              "name": "uninstall",
+              "description": "Uninstall a plugin (selector if no args)",
+              "usage": "[name@marketplace]"
+            },
+            {
+              "name": "installed",
+              "description": "List installed marketplace plugins"
+            },
+            {
+              "name": "upgrade",
+              "description": "Upgrade outdated plugins",
+              "usage": "[name@marketplace]"
+            },
+            {
+              "name": "help",
+              "description": "Show usage guide"
+            }
+          ],
+          "source": "builtin"
+        },
+        {
+          "name": "plugins",
+          "aliases": ["plugin"],
+          "description": "Manage plugins",
+          "input": {
+            "hint": "[list|enable|disable]"
+          },
+          "subcommands": [
+            {
+              "name": "list",
+              "description": "List all installed plugins (npm + marketplace)"
+            },
+            {
+              "name": "enable",
+              "description": "Enable an installed plugin",
+              "usage": "<plugin>"
+            },
+            {
+              "name": "disable",
+              "description": "Disable an installed plugin",
+              "usage": "<plugin>"
+            }
+          ],
+          "source": "builtin"
+        },
+        {
+          "name": "reload-plugins",
+          "description": "Reload all plugins",
+          "source": "builtin"
+        },
+        {
+          "name": "force",
+          "aliases": ["force:"],
+          "description": "Force next turn to use a specific tool",
+          "input": {
+            "hint": "<tool-name> [prompt]"
+          },
+          "source": "builtin"
+        },
+        {
+          "name": "forget-approvals",
+          "description": "Forget every file and folder approval Ask and remember has recorded",
+          "source": "builtin"
+        },
+        {
+          "name": "autoresearch",
+          "description": "Toggle builtin autoresearch mode, or pass off / clear, or a goal message.",
+          "input": {
+            "hint": "arguments"
+          },
+          "source": "extension"
+        },
+        {
+          "name": "init",
+          "description": "Generate AGENTS.md for current codebase",
+          "source": "file"
+        }
+      ]
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "id": "negotiate_protocol",
+      "type": "response",
+      "command": "negotiate_protocol",
+      "success": true,
+      "data": {
+        "protocolVersion": 2
+      }
+    }
+  },
+  {
+    "direction": "out",
+    "frame": {
+      "id": "set_event_filter",
+      "type": "set_event_filter",
+      "events": null,
+      "messageUpdates": "delta"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "id": "set_event_filter",
+      "type": "response",
+      "command": "set_event_filter",
+      "success": true,
+      "data": {
+        "events": null,
+        "messageUpdates": "delta"
+      }
+    }
+  },
+  {
+    "direction": "out",
+    "frame": {
+      "id": "set_subagent_subscription",
+      "type": "set_subagent_subscription",
+      "level": "progress"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "id": "set_subagent_subscription",
+      "type": "response",
+      "command": "set_subagent_subscription",
+      "success": true,
+      "data": {
+        "level": "progress"
+      }
+    }
+  },
+  {
+    "direction": "out",
+    "frame": {
+      "type": "prompt",
+      "id": "approval-allow",
+      "message": "Use the write tool exactly once to write ALLOWED into allowed.txt. Do not use bash, eval, task, or any other tools. Then say DONE."
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "id": "approval-allow",
+      "type": "response",
+      "command": "prompt",
+      "success": true
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "agent_start"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "turn_start"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_start",
+      "message": {
+        "role": "user",
+        "content": [
+          {
+            "type": "text",
+            "text": "Use the write tool exactly once to write ALLOWED into allowed.txt. Do not use bash, eval, task, or any other tools. Then say DONE."
+          }
+        ],
+        "attribution": "user",
+        "timestamp": 1794609487651
+      },
+      "messageId": "msg-1"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_end",
+      "message": {
+        "role": "user",
+        "content": [
+          {
+            "type": "text",
+            "text": "Use the write tool exactly once to write ALLOWED into allowed.txt. Do not use bash, eval, task, or any other tools. Then say DONE."
+          }
+        ],
+        "attribution": "user",
+        "timestamp": 1794609487651
+      },
+      "messageId": "msg-1"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_start",
+      "message": {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "toolCall",
+            "id": "call_6a969cbe170546c5b76b4757a1752536|fc_049e6f72b6224759016af791510ac487d1b8d97a7b858a8846",
+            "name": "write",
+            "arguments": {}
+          }
+        ],
+        "api": "openai-codex-responses",
+        "provider": "openai-codex",
+        "model": "gpt-6-luna",
+        "usage": {
+          "input": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "totalTokens": 0,
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "total": 0
+          }
+        },
+        "stopReason": "stop",
+        "timestamp": 1794609487676,
+        "credentialId": 1
+      },
+      "messageId": "msg-2"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_start",
+        "contentIndex": 0,
+        "block": {
+          "type": "toolCall",
+          "id": "call_6a969cbe170546c5b76b4757a1752536|fc_049e6f72b6224759016af791510ac487d1b8d97a7b858a8846",
+          "name": "write",
+          "arguments": {}
+        }
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-2"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "{\""
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-2"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "i"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-2"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "\":\""
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-2"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "Writing"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-2"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": " allowed"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-2"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": " marker"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-2"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "\",\""
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-2"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "path"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-2"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "\":\""
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-2"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "allowed"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-2"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": ".txt"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-2"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "\",\""
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-2"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "content"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-2"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "\":\""
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-2"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "AL"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-2"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "LOWED"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-2"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "\"}"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-2"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_end",
+        "contentIndex": 0,
+        "toolCall": {
+          "type": "toolCall",
+          "id": "call_6a969cbe170546c5b76b4757a1752536|fc_049e6f72b6224759016af791510ac487d1b8d97a7b858a8846",
+          "name": "write",
+          "arguments": {
+            "i": "Writing allowed marker",
+            "path": "allowed.txt",
+            "content": "ALLOWED"
+          }
+        }
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-2"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_end",
+      "message": {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "toolCall",
+            "id": "call_6a969cbe170546c5b76b4757a1752536|fc_049e6f72b6224759016af791510ac487d1b8d97a7b858a8846",
+            "name": "write",
+            "arguments": {
+              "i": "Writing allowed marker",
+              "path": "allowed.txt",
+              "content": "ALLOWED"
+            },
+            "intent": "Writing allowed marker"
+          }
+        ],
+        "api": "openai-codex-responses",
+        "provider": "openai-codex",
+        "model": "gpt-6-luna",
+        "usage": {
+          "input": 7707,
+          "output": 29,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "totalTokens": 7736,
+          "cost": {
+            "input": 0.0007707,
+            "output": 1.45e-5,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "total": 0.0007852
+          },
+          "premiumRequests": 0
+        },
+        "stopReason": "toolUse",
+        "timestamp": 1794609487676,
+        "credentialId": 1,
+        "responseId": "resp_049e6f72b6224759016af7915071e487d19e4bb80b40be03ca",
+        "serviceTier": "default",
+        "providerPayload": {
+          "type": "openaiResponsesHistory",
+          "provider": "openai-codex",
+          "dt": true,
+          "items": [
+            {
+              "type": "function_call",
+              "id": "fc_049e6f72b6224759016af791510ac487d1b8d97a7b858a8846",
+              "metadata": {
+                "turn_id": "00000000-0000-4000-8000-000000000001"
+              },
+              "internal_chat_message_metadata_passthrough": {
+                "create_time": 1794609489.0697258,
+                "turn_id": "00000000-0000-4000-8000-000000000001"
+              },
+              "call_id": "call_6a969cbe170546c5b76b4757a1752536",
+              "name": "write",
+              "arguments": "{\"i\":\"Writing allowed marker\",\"path\":\"allowed.txt\",\"content\":\"ALLOWED\"}",
+              "status": "completed"
+            }
+          ]
+        },
+        "duration": 1753.7003760000002,
+        "ttft": 1407.572732,
+        "completedAt": 1794609489431
+      },
+      "messageId": "msg-2"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "tool_execution_start",
+      "toolCallId": "call_6a969cbe170546c5b76b4757a1752536|fc_049e6f72b6224759016af791510ac487d1b8d97a7b858a8846",
+      "toolName": "write",
+      "args": {
+        "path": "allowed.txt",
+        "content": "ALLOWED"
+      },
+      "intent": "Writing allowed marker"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "extension_ui_request",
+      "id": "15cd113d8672503f",
+      "method": "select",
+      "title": "Allow tool: write\nPath: allowed.txt\nContent:\nALLOWED",
+      "options": ["Approve", "Approve write for this session", "Deny"]
+    }
+  },
+  {
+    "direction": "out",
+    "frame": {
+      "type": "extension_ui_response",
+      "id": "15cd113d8672503f",
+      "value": "Approve"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "tool_execution_update",
+      "toolCallId": "call_6a969cbe170546c5b76b4757a1752536|fc_049e6f72b6224759016af791510ac487d1b8d97a7b858a8846",
+      "toolName": "write",
+      "args": {
+        "path": "allowed.txt",
+        "content": "ALLOWED"
+      },
+      "partialResult": {
+        "content": [
+          {
+            "type": "text",
+            "text": "Writing 7 bytes to allowed.txt..."
+          }
+        ],
+        "details": {
+          "resolvedPath": "<capture>/workspace/allowed.txt"
+        }
+      }
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "tool_execution_end",
+      "toolCallId": "call_6a969cbe170546c5b76b4757a1752536|fc_049e6f72b6224759016af791510ac487d1b8d97a7b858a8846",
+      "toolName": "write",
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "[allowed.txt#706D]\nSuccessfully wrote 7 bytes to allowed.txt"
+          }
+        ],
+        "details": {
+          "resolvedPath": "<capture>/workspace/allowed.txt"
+        }
+      },
+      "isError": false
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_start",
+      "message": {
+        "role": "toolResult",
+        "toolCallId": "call_6a969cbe170546c5b76b4757a1752536|fc_049e6f72b6224759016af791510ac487d1b8d97a7b858a8846",
+        "toolName": "write",
+        "content": [
+          {
+            "type": "text",
+            "text": "[allowed.txt#706D]\nSuccessfully wrote 7 bytes to allowed.txt"
+          }
+        ],
+        "details": {
+          "resolvedPath": "<capture>/workspace/allowed.txt"
+        },
+        "isError": false,
+        "timestamp": 1794609489434
+      },
+      "messageId": "msg-3"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_end",
+      "message": {
+        "role": "toolResult",
+        "toolCallId": "call_6a969cbe170546c5b76b4757a1752536|fc_049e6f72b6224759016af791510ac487d1b8d97a7b858a8846",
+        "toolName": "write",
+        "content": [
+          {
+            "type": "text",
+            "text": "[allowed.txt#706D]\nSuccessfully wrote 7 bytes to allowed.txt"
+          }
+        ],
+        "details": {
+          "resolvedPath": "<capture>/workspace/allowed.txt"
+        },
+        "isError": false,
+        "timestamp": 1794609489434
+      },
+      "messageId": "msg-3"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "turn_end",
+      "message": {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "toolCall",
+            "id": "call_6a969cbe170546c5b76b4757a1752536|fc_049e6f72b6224759016af791510ac487d1b8d97a7b858a8846",
+            "name": "write",
+            "arguments": {
+              "i": "Writing allowed marker",
+              "path": "allowed.txt",
+              "content": "ALLOWED"
+            },
+            "intent": "Writing allowed marker"
+          }
+        ],
+        "api": "openai-codex-responses",
+        "provider": "openai-codex",
+        "model": "gpt-6-luna",
+        "usage": {
+          "input": 7707,
+          "output": 29,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "totalTokens": 7736,
+          "cost": {
+            "input": 0.0007707,
+            "output": 1.45e-5,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "total": 0.0007852
+          },
+          "premiumRequests": 0
+        },
+        "stopReason": "toolUse",
+        "timestamp": 1794609487676,
+        "credentialId": 1,
+        "responseId": "resp_049e6f72b6224759016af7915071e487d19e4bb80b40be03ca",
+        "serviceTier": "default",
+        "providerPayload": {
+          "type": "openaiResponsesHistory",
+          "provider": "openai-codex",
+          "dt": true,
+          "items": [
+            {
+              "type": "function_call",
+              "id": "fc_049e6f72b6224759016af791510ac487d1b8d97a7b858a8846",
+              "metadata": {
+                "turn_id": "00000000-0000-4000-8000-000000000001"
+              },
+              "internal_chat_message_metadata_passthrough": {
+                "create_time": 1794609489.0697258,
+                "turn_id": "00000000-0000-4000-8000-000000000001"
+              },
+              "call_id": "call_6a969cbe170546c5b76b4757a1752536",
+              "name": "write",
+              "arguments": "{\"i\":\"Writing allowed marker\",\"path\":\"allowed.txt\",\"content\":\"ALLOWED\"}",
+              "status": "completed"
+            }
+          ]
+        },
+        "duration": 1753.7003760000002,
+        "ttft": 1407.572732
+      },
+      "toolResults": [
+        {
+          "role": "toolResult",
+          "toolCallId": "call_6a969cbe170546c5b76b4757a1752536|fc_049e6f72b6224759016af791510ac487d1b8d97a7b858a8846",
+          "toolName": "write",
+          "content": [
+            {
+              "type": "text",
+              "text": "[allowed.txt#706D]\nSuccessfully wrote 7 bytes to allowed.txt"
+            }
+          ],
+          "details": {
+            "resolvedPath": "<capture>/workspace/allowed.txt"
+          },
+          "isError": false,
+          "timestamp": 1794609489434
+        }
+      ]
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "turn_start"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_start",
+      "message": {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "text",
+            "text": "",
+            "textSignature": "{\"v\":1,\"id\":\"msg_049e6f72b6224759016af7915226c887d19af006b7868c260a\",\"phase\":\"final_answer\"}"
+          }
+        ],
+        "api": "openai-codex-responses",
+        "provider": "openai-codex",
+        "model": "gpt-6-luna",
+        "usage": {
+          "input": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "totalTokens": 0,
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "total": 0
+          }
+        },
+        "stopReason": "stop",
+        "timestamp": 1794609489438,
+        "credentialId": 1
+      },
+      "messageId": "msg-4"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "text_start",
+        "contentIndex": 0,
+        "block": {
+          "type": "text",
+          "text": "",
+          "textSignature": "{\"v\":1,\"id\":\"msg_049e6f72b6224759016af7915226c887d19af006b7868c260a\",\"phase\":\"final_answer\"}"
+        }
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-4"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "text_delta",
+        "contentIndex": 0,
+        "delta": "DONE"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-4"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "text_end",
+        "contentIndex": 0,
+        "content": "DONE",
+        "block": {
+          "type": "text",
+          "textSignature": "{\"v\":1,\"id\":\"msg_049e6f72b6224759016af7915226c887d19af006b7868c260a\",\"phase\":\"final_answer\"}"
+        }
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-4"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_end",
+      "message": {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "text",
+            "text": "DONE",
+            "textSignature": "{\"v\":1,\"id\":\"msg_049e6f72b6224759016af7915226c887d19af006b7868c260a\",\"phase\":\"final_answer\"}"
+          }
+        ],
+        "api": "openai-codex-responses",
+        "provider": "openai-codex",
+        "model": "gpt-6-luna",
+        "usage": {
+          "input": 209,
+          "output": 5,
+          "cacheRead": 7552,
+          "cacheWrite": 0,
+          "totalTokens": 7766,
+          "cost": {
+            "input": 2.0900000000000003e-5,
+            "output": 2.4999999999999998e-6,
+            "cacheRead": 7.552e-5,
+            "cacheWrite": 0,
+            "total": 9.892e-5
+          },
+          "premiumRequests": 0
+        },
+        "stopReason": "stop",
+        "timestamp": 1794609489438,
+        "credentialId": 1,
+        "responseId": "resp_049e6f72b6224759016af79151d26087d19a5975b17412b2ff",
+        "serviceTier": "default",
+        "providerPayload": {
+          "type": "openaiResponsesHistory",
+          "provider": "openai-codex",
+          "dt": true,
+          "items": [
+            {
+              "type": "message",
+              "id": "msg_049e6f72b6224759016af7915226c887d19af006b7868c260a",
+              "metadata": {
+                "turn_id": "00000000-0000-4000-8000-000000000001"
+              },
+              "internal_chat_message_metadata_passthrough": {
+                "content_token_count": 2,
+                "create_time": 1794609490.1584,
+                "turn_id": "00000000-0000-4000-8000-000000000001"
+              },
+              "role": "assistant",
+              "status": "completed",
+              "content": [
+                {
+                  "type": "output_text",
+                  "text": "DONE",
+                  "annotations": [],
+                  "logprobs": []
+                }
+              ],
+              "phase": "final_answer"
+            }
+          ]
+        },
+        "duration": 792.4715929999998,
+        "ttft": 736.4231289999998,
+        "completedAt": 1794609490231
+      },
+      "messageId": "msg-4"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "turn_end",
+      "message": {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "text",
+            "text": "DONE",
+            "textSignature": "{\"v\":1,\"id\":\"msg_049e6f72b6224759016af7915226c887d19af006b7868c260a\",\"phase\":\"final_answer\"}"
+          }
+        ],
+        "api": "openai-codex-responses",
+        "provider": "openai-codex",
+        "model": "gpt-6-luna",
+        "usage": {
+          "input": 209,
+          "output": 5,
+          "cacheRead": 7552,
+          "cacheWrite": 0,
+          "totalTokens": 7766,
+          "cost": {
+            "input": 2.0900000000000003e-5,
+            "output": 2.4999999999999998e-6,
+            "cacheRead": 7.552e-5,
+            "cacheWrite": 0,
+            "total": 9.892e-5
+          },
+          "premiumRequests": 0
+        },
+        "stopReason": "stop",
+        "timestamp": 1794609489438,
+        "credentialId": 1,
+        "responseId": "resp_049e6f72b6224759016af79151d26087d19a5975b17412b2ff",
+        "serviceTier": "default",
+        "providerPayload": {
+          "type": "openaiResponsesHistory",
+          "provider": "openai-codex",
+          "dt": true,
+          "items": [
+            {
+              "type": "message",
+              "id": "msg_049e6f72b6224759016af7915226c887d19af006b7868c260a",
+              "metadata": {
+                "turn_id": "00000000-0000-4000-8000-000000000001"
+              },
+              "internal_chat_message_metadata_passthrough": {
+                "content_token_count": 2,
+                "create_time": 1794609490.1584,
+                "turn_id": "00000000-0000-4000-8000-000000000001"
+              },
+              "role": "assistant",
+              "status": "completed",
+              "content": [
+                {
+                  "type": "output_text",
+                  "text": "DONE",
+                  "annotations": [],
+                  "logprobs": []
+                }
+              ],
+              "phase": "final_answer"
+            }
+          ]
+        },
+        "duration": 792.4715929999998,
+        "ttft": 736.4231289999998
+      },
+      "toolResults": []
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "extension_ui_request",
+      "id": "15cd113e4e325040",
+      "method": "setWidget",
+      "widgetKey": "autoresearch"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "agent_end",
+      "messages": [
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "Use the write tool exactly once to write ALLOWED into allowed.txt. Do not use bash, eval, task, or any other tools. Then say DONE."
+            }
+          ],
+          "attribution": "user",
+          "timestamp": 1794609487651
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "toolCall",
+              "id": "call_6a969cbe170546c5b76b4757a1752536|fc_049e6f72b6224759016af791510ac487d1b8d97a7b858a8846",
+              "name": "write",
+              "arguments": {
+                "i": "Writing allowed marker",
+                "path": "allowed.txt",
+                "content": "ALLOWED"
+              },
+              "intent": "Writing allowed marker"
+            }
+          ],
+          "api": "openai-codex-responses",
+          "provider": "openai-codex",
+          "model": "gpt-6-luna",
+          "usage": {
+            "input": 7707,
+            "output": 29,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 7736,
+            "cost": {
+              "input": 0.0007707,
+              "output": 1.45e-5,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0.0007852
+            },
+            "premiumRequests": 0
+          },
+          "stopReason": "toolUse",
+          "timestamp": 1794609487676,
+          "credentialId": 1,
+          "responseId": "resp_049e6f72b6224759016af7915071e487d19e4bb80b40be03ca",
+          "serviceTier": "default",
+          "providerPayload": {
+            "type": "openaiResponsesHistory",
+            "provider": "openai-codex",
+            "dt": true,
+            "items": [
+              {
+                "type": "function_call",
+                "id": "fc_049e6f72b6224759016af791510ac487d1b8d97a7b858a8846",
+                "metadata": {
+                  "turn_id": "00000000-0000-4000-8000-000000000001"
+                },
+                "internal_chat_message_metadata_passthrough": {
+                  "create_time": 1794609489.0697258,
+                  "turn_id": "00000000-0000-4000-8000-000000000001"
+                },
+                "call_id": "call_6a969cbe170546c5b76b4757a1752536",
+                "name": "write",
+                "arguments": "{\"i\":\"Writing allowed marker\",\"path\":\"allowed.txt\",\"content\":\"ALLOWED\"}",
+                "status": "completed"
+              }
+            ]
+          },
+          "duration": 1753.7003760000002,
+          "ttft": 1407.572732
+        },
+        {
+          "role": "toolResult",
+          "toolCallId": "call_6a969cbe170546c5b76b4757a1752536|fc_049e6f72b6224759016af791510ac487d1b8d97a7b858a8846",
+          "toolName": "write",
+          "content": [
+            {
+              "type": "text",
+              "text": "[allowed.txt#706D]\nSuccessfully wrote 7 bytes to allowed.txt"
+            }
+          ],
+          "details": {
+            "resolvedPath": "<capture>/workspace/allowed.txt"
+          },
+          "isError": false,
+          "timestamp": 1794609489434
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "DONE",
+              "textSignature": "{\"v\":1,\"id\":\"msg_049e6f72b6224759016af7915226c887d19af006b7868c260a\",\"phase\":\"final_answer\"}"
+            }
+          ],
+          "api": "openai-codex-responses",
+          "provider": "openai-codex",
+          "model": "gpt-6-luna",
+          "usage": {
+            "input": 209,
+            "output": 5,
+            "cacheRead": 7552,
+            "cacheWrite": 0,
+            "totalTokens": 7766,
+            "cost": {
+              "input": 2.0900000000000003e-5,
+              "output": 2.4999999999999998e-6,
+              "cacheRead": 7.552e-5,
+              "cacheWrite": 0,
+              "total": 9.892e-5
+            },
+            "premiumRequests": 0
+          },
+          "stopReason": "stop",
+          "timestamp": 1794609489438,
+          "credentialId": 1,
+          "responseId": "resp_049e6f72b6224759016af79151d26087d19a5975b17412b2ff",
+          "serviceTier": "default",
+          "providerPayload": {
+            "type": "openaiResponsesHistory",
+            "provider": "openai-codex",
+            "dt": true,
+            "items": [
+              {
+                "type": "message",
+                "id": "msg_049e6f72b6224759016af7915226c887d19af006b7868c260a",
+                "metadata": {
+                  "turn_id": "00000000-0000-4000-8000-000000000001"
+                },
+                "internal_chat_message_metadata_passthrough": {
+                  "content_token_count": 2,
+                  "create_time": 1794609490.1584,
+                  "turn_id": "00000000-0000-4000-8000-000000000001"
+                },
+                "role": "assistant",
+                "status": "completed",
+                "content": [
+                  {
+                    "type": "output_text",
+                    "text": "DONE",
+                    "annotations": [],
+                    "logprobs": []
+                  }
+                ],
+                "phase": "final_answer"
+              }
+            ]
+          },
+          "duration": 792.4715929999998,
+          "ttft": 736.4231289999998
+        }
+      ],
+      "isTerminal": true,
+      "yielded": true
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "prompt_result",
+      "id": "approval-allow",
+      "agentInvoked": true,
+      "status": "completed",
+      "sessionSettled": true
+    }
+  },
+  {
+    "direction": "out",
+    "frame": {
+      "id": "get_session_stats",
+      "type": "get_session_stats"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "session_settled"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "id": "get_session_stats",
+      "type": "response",
+      "command": "get_session_stats",
+      "success": true,
+      "data": {
+        "sessionFile": "<capture>/sessions/2026-11-13T22-38-07-356Z_01a1d70f-9dfc-7700-b27c-ce38a6ab653d.jsonl",
+        "sessionId": "00000000-0000-4000-8000-000000000001",
+        "userMessages": 1,
+        "assistantMessages": 2,
+        "toolCalls": 1,
+        "toolResults": 1,
+        "totalMessages": 4,
+        "tokens": {
+          "input": 7916,
+          "output": 34,
+          "reasoning": 0,
+          "cacheRead": 7552,
+          "cacheWrite": 0,
+          "total": 15502
+        },
+        "cost": 0.00088412,
+        "premiumRequests": 0,
+        "contextUsage": {
+          "tokens": 7761,
+          "contextWindow": 272000,
+          "percent": 2.853308823529412
+        }
+      }
+    }
+  },
+  {
+    "direction": "out",
+    "frame": {
+      "type": "prompt",
+      "id": "approval-deny",
+      "message": "Use the write tool exactly once to write DENIED into denied.txt. If permission is denied, do not retry and say DENIED. No other tools."
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "id": "approval-deny",
+      "type": "response",
+      "command": "prompt",
+      "success": true
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "agent_start"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "turn_start"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_start",
+      "message": {
+        "role": "user",
+        "content": [
+          {
+            "type": "text",
+            "text": "Use the write tool exactly once to write DENIED into denied.txt. If permission is denied, do not retry and say DENIED. No other tools."
+          }
+        ],
+        "attribution": "user",
+        "timestamp": 1794609490233
+      },
+      "messageId": "msg-5"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_end",
+      "message": {
+        "role": "user",
+        "content": [
+          {
+            "type": "text",
+            "text": "Use the write tool exactly once to write DENIED into denied.txt. If permission is denied, do not retry and say DENIED. No other tools."
+          }
+        ],
+        "attribution": "user",
+        "timestamp": 1794609490233
+      },
+      "messageId": "msg-5"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_start",
+      "message": {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "toolCall",
+            "id": "call_3343f7f803364e218809e514fbbee984|fc_049e6f72b6224759016af791534f4487d1acb7bed1d0832899",
+            "name": "write",
+            "arguments": {}
+          }
+        ],
+        "api": "openai-codex-responses",
+        "provider": "openai-codex",
+        "model": "gpt-6-luna",
+        "usage": {
+          "input": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "totalTokens": 0,
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "total": 0
+          }
+        },
+        "stopReason": "stop",
+        "timestamp": 1794609490239,
+        "credentialId": 1
+      },
+      "messageId": "msg-6"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_start",
+        "contentIndex": 0,
+        "block": {
+          "type": "toolCall",
+          "id": "call_3343f7f803364e218809e514fbbee984|fc_049e6f72b6224759016af791534f4487d1acb7bed1d0832899",
+          "name": "write",
+          "arguments": {}
+        }
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-6"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "{\""
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-6"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "i"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-6"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "\":\""
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-6"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "Writing"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-6"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": " denied"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-6"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": " marker"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-6"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "\",\""
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-6"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "path"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-6"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "\":\""
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-6"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "den"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-6"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "ied"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-6"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": ".txt"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-6"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "\",\""
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-6"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "content"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-6"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "\":\""
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-6"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "DEN"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-6"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "IED"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-6"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "\"}"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-6"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_end",
+        "contentIndex": 0,
+        "toolCall": {
+          "type": "toolCall",
+          "id": "call_3343f7f803364e218809e514fbbee984|fc_049e6f72b6224759016af791534f4487d1acb7bed1d0832899",
+          "name": "write",
+          "arguments": {
+            "i": "Writing denied marker",
+            "path": "denied.txt",
+            "content": "DENIED"
+          }
+        }
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-6"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_end",
+      "message": {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "toolCall",
+            "id": "call_3343f7f803364e218809e514fbbee984|fc_049e6f72b6224759016af791534f4487d1acb7bed1d0832899",
+            "name": "write",
+            "arguments": {
+              "i": "Writing denied marker",
+              "path": "denied.txt",
+              "content": "DENIED"
+            },
+            "intent": "Writing denied marker"
+          }
+        ],
+        "api": "openai-codex-responses",
+        "provider": "openai-codex",
+        "model": "gpt-6-luna",
+        "usage": {
+          "input": 123,
+          "output": 30,
+          "cacheRead": 7680,
+          "cacheWrite": 0,
+          "totalTokens": 7833,
+          "cost": {
+            "input": 1.23e-5,
+            "output": 1.4999999999999999e-5,
+            "cacheRead": 7.68e-5,
+            "cacheWrite": 0,
+            "total": 0.0001041
+          },
+          "premiumRequests": 0
+        },
+        "stopReason": "toolUse",
+        "timestamp": 1794609490239,
+        "credentialId": 1,
+        "responseId": "resp_049e6f72b6224759016af79152af5487d1bab56de5235f522f",
+        "serviceTier": "default",
+        "providerPayload": {
+          "type": "openaiResponsesHistory",
+          "provider": "openai-codex",
+          "dt": true,
+          "items": [
+            {
+              "type": "function_call",
+              "id": "fc_049e6f72b6224759016af791534f4487d1acb7bed1d0832899",
+              "metadata": {
+                "turn_id": "00000000-0000-4000-8000-000000000001"
+              },
+              "internal_chat_message_metadata_passthrough": {
+                "create_time": 1794609491.3206823,
+                "turn_id": "00000000-0000-4000-8000-000000000001"
+              },
+              "call_id": "call_3343f7f803364e218809e514fbbee984",
+              "name": "write",
+              "arguments": "{\"i\":\"Writing denied marker\",\"path\":\"denied.txt\",\"content\":\"DENIED\"}",
+              "status": "completed"
+            }
+          ]
+        },
+        "duration": 1459.8565080000003,
+        "ttft": 1097.4665009999999,
+        "completedAt": 1794609491700
+      },
+      "messageId": "msg-6"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "tool_execution_start",
+      "toolCallId": "call_3343f7f803364e218809e514fbbee984|fc_049e6f72b6224759016af791534f4487d1acb7bed1d0832899",
+      "toolName": "write",
+      "args": {
+        "path": "denied.txt",
+        "content": "DENIED"
+      },
+      "intent": "Writing denied marker"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "extension_ui_request",
+      "id": "15cd113fbd325041",
+      "method": "select",
+      "title": "Allow tool: write\nPath: denied.txt\nContent:\nDENIED",
+      "options": ["Approve", "Approve write for this session", "Deny"]
+    }
+  },
+  {
+    "direction": "out",
+    "frame": {
+      "type": "extension_ui_response",
+      "id": "15cd113fbd325041",
+      "value": "Deny"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "tool_execution_end",
+      "toolCallId": "call_3343f7f803364e218809e514fbbee984|fc_049e6f72b6224759016af791534f4487d1acb7bed1d0832899",
+      "toolName": "write",
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "Tool call denied by user: write"
+          }
+        ],
+        "details": {}
+      },
+      "isError": true
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_start",
+      "message": {
+        "role": "toolResult",
+        "toolCallId": "call_3343f7f803364e218809e514fbbee984|fc_049e6f72b6224759016af791534f4487d1acb7bed1d0832899",
+        "toolName": "write",
+        "content": [
+          {
+            "type": "text",
+            "text": "Tool call denied by user: write"
+          }
+        ],
+        "details": {},
+        "isError": true,
+        "timestamp": 1794609491701
+      },
+      "messageId": "msg-7"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_end",
+      "message": {
+        "role": "toolResult",
+        "toolCallId": "call_3343f7f803364e218809e514fbbee984|fc_049e6f72b6224759016af791534f4487d1acb7bed1d0832899",
+        "toolName": "write",
+        "content": [
+          {
+            "type": "text",
+            "text": "Tool call denied by user: write"
+          }
+        ],
+        "details": {},
+        "isError": true,
+        "timestamp": 1794609491701
+      },
+      "messageId": "msg-7"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "turn_end",
+      "message": {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "toolCall",
+            "id": "call_3343f7f803364e218809e514fbbee984|fc_049e6f72b6224759016af791534f4487d1acb7bed1d0832899",
+            "name": "write",
+            "arguments": {
+              "i": "Writing denied marker",
+              "path": "denied.txt",
+              "content": "DENIED"
+            },
+            "intent": "Writing denied marker"
+          }
+        ],
+        "api": "openai-codex-responses",
+        "provider": "openai-codex",
+        "model": "gpt-6-luna",
+        "usage": {
+          "input": 123,
+          "output": 30,
+          "cacheRead": 7680,
+          "cacheWrite": 0,
+          "totalTokens": 7833,
+          "cost": {
+            "input": 1.23e-5,
+            "output": 1.4999999999999999e-5,
+            "cacheRead": 7.68e-5,
+            "cacheWrite": 0,
+            "total": 0.0001041
+          },
+          "premiumRequests": 0
+        },
+        "stopReason": "toolUse",
+        "timestamp": 1794609490239,
+        "credentialId": 1,
+        "responseId": "resp_049e6f72b6224759016af79152af5487d1bab56de5235f522f",
+        "serviceTier": "default",
+        "providerPayload": {
+          "type": "openaiResponsesHistory",
+          "provider": "openai-codex",
+          "dt": true,
+          "items": [
+            {
+              "type": "function_call",
+              "id": "fc_049e6f72b6224759016af791534f4487d1acb7bed1d0832899",
+              "metadata": {
+                "turn_id": "00000000-0000-4000-8000-000000000001"
+              },
+              "internal_chat_message_metadata_passthrough": {
+                "create_time": 1794609491.3206823,
+                "turn_id": "00000000-0000-4000-8000-000000000001"
+              },
+              "call_id": "call_3343f7f803364e218809e514fbbee984",
+              "name": "write",
+              "arguments": "{\"i\":\"Writing denied marker\",\"path\":\"denied.txt\",\"content\":\"DENIED\"}",
+              "status": "completed"
+            }
+          ]
+        },
+        "duration": 1459.8565080000003,
+        "ttft": 1097.4665009999999
+      },
+      "toolResults": [
+        {
+          "role": "toolResult",
+          "toolCallId": "call_3343f7f803364e218809e514fbbee984|fc_049e6f72b6224759016af791534f4487d1acb7bed1d0832899",
+          "toolName": "write",
+          "content": [
+            {
+              "type": "text",
+              "text": "Tool call denied by user: write"
+            }
+          ],
+          "details": {},
+          "isError": true,
+          "timestamp": 1794609491701
+        }
+      ]
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "turn_start"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_start",
+      "message": {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "text",
+            "text": "",
+            "textSignature": "{\"v\":1,\"id\":\"msg_049e6f72b6224759016af79154659887d1aacf98000d379f95\",\"phase\":\"final_answer\"}"
+          }
+        ],
+        "api": "openai-codex-responses",
+        "provider": "openai-codex",
+        "model": "gpt-6-luna",
+        "usage": {
+          "input": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "totalTokens": 0,
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "total": 0
+          }
+        },
+        "stopReason": "stop",
+        "timestamp": 1794609491703,
+        "credentialId": 1
+      },
+      "messageId": "msg-8"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "text_start",
+        "contentIndex": 0,
+        "block": {
+          "type": "text",
+          "text": "",
+          "textSignature": "{\"v\":1,\"id\":\"msg_049e6f72b6224759016af79154659887d1aacf98000d379f95\",\"phase\":\"final_answer\"}"
+        }
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-8"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "text_delta",
+        "contentIndex": 0,
+        "delta": "DEN"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-8"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "text_delta",
+        "contentIndex": 0,
+        "delta": "IED"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-8"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "text_end",
+        "contentIndex": 0,
+        "content": "DENIED",
+        "block": {
+          "type": "text",
+          "textSignature": "{\"v\":1,\"id\":\"msg_049e6f72b6224759016af79154659887d1aacf98000d379f95\",\"phase\":\"final_answer\"}"
+        }
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-8"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_end",
+      "message": {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "text",
+            "text": "DENIED",
+            "textSignature": "{\"v\":1,\"id\":\"msg_049e6f72b6224759016af79154659887d1aacf98000d379f95\",\"phase\":\"final_answer\"}"
+          }
+        ],
+        "api": "openai-codex-responses",
+        "provider": "openai-codex",
+        "model": "gpt-6-luna",
+        "usage": {
+          "input": 170,
+          "output": 6,
+          "cacheRead": 7680,
+          "cacheWrite": 0,
+          "totalTokens": 7856,
+          "cost": {
+            "input": 1.7e-5,
+            "output": 3e-6,
+            "cacheRead": 7.68e-5,
+            "cacheWrite": 0,
+            "total": 9.68e-5
+          },
+          "premiumRequests": 0
+        },
+        "stopReason": "stop",
+        "timestamp": 1794609491703,
+        "credentialId": 1,
+        "responseId": "resp_049e6f72b6224759016af791540b7c87d1adadce0fa25bc6df",
+        "serviceTier": "default",
+        "providerPayload": {
+          "type": "openaiResponsesHistory",
+          "provider": "openai-codex",
+          "dt": true,
+          "items": [
+            {
+              "type": "message",
+              "id": "msg_049e6f72b6224759016af79154659887d1aacf98000d379f95",
+              "metadata": {
+                "turn_id": "00000000-0000-4000-8000-000000000001"
+              },
+              "internal_chat_message_metadata_passthrough": {
+                "content_token_count": 3,
+                "create_time": 1794609492.403906,
+                "turn_id": "00000000-0000-4000-8000-000000000001"
+              },
+              "role": "assistant",
+              "status": "completed",
+              "content": [
+                {
+                  "type": "output_text",
+                  "text": "DENIED",
+                  "annotations": [],
+                  "logprobs": []
+                }
+              ],
+              "phase": "final_answer"
+            }
+          ]
+        },
+        "duration": 887.1648100000002,
+        "ttft": 715.5665369999997,
+        "completedAt": 1794609492590
+      },
+      "messageId": "msg-8"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "turn_end",
+      "message": {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "text",
+            "text": "DENIED",
+            "textSignature": "{\"v\":1,\"id\":\"msg_049e6f72b6224759016af79154659887d1aacf98000d379f95\",\"phase\":\"final_answer\"}"
+          }
+        ],
+        "api": "openai-codex-responses",
+        "provider": "openai-codex",
+        "model": "gpt-6-luna",
+        "usage": {
+          "input": 170,
+          "output": 6,
+          "cacheRead": 7680,
+          "cacheWrite": 0,
+          "totalTokens": 7856,
+          "cost": {
+            "input": 1.7e-5,
+            "output": 3e-6,
+            "cacheRead": 7.68e-5,
+            "cacheWrite": 0,
+            "total": 9.68e-5
+          },
+          "premiumRequests": 0
+        },
+        "stopReason": "stop",
+        "timestamp": 1794609491703,
+        "credentialId": 1,
+        "responseId": "resp_049e6f72b6224759016af791540b7c87d1adadce0fa25bc6df",
+        "serviceTier": "default",
+        "providerPayload": {
+          "type": "openaiResponsesHistory",
+          "provider": "openai-codex",
+          "dt": true,
+          "items": [
+            {
+              "type": "message",
+              "id": "msg_049e6f72b6224759016af79154659887d1aacf98000d379f95",
+              "metadata": {
+                "turn_id": "00000000-0000-4000-8000-000000000001"
+              },
+              "internal_chat_message_metadata_passthrough": {
+                "content_token_count": 3,
+                "create_time": 1794609492.403906,
+                "turn_id": "00000000-0000-4000-8000-000000000001"
+              },
+              "role": "assistant",
+              "status": "completed",
+              "content": [
+                {
+                  "type": "output_text",
+                  "text": "DENIED",
+                  "annotations": [],
+                  "logprobs": []
+                }
+              ],
+              "phase": "final_answer"
+            }
+          ]
+        },
+        "duration": 887.1648100000002,
+        "ttft": 715.5665369999997
+      },
+      "toolResults": []
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "extension_ui_request",
+      "id": "15cd11409c325042",
+      "method": "setWidget",
+      "widgetKey": "autoresearch"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "agent_end",
+      "messages": [
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "Use the write tool exactly once to write DENIED into denied.txt. If permission is denied, do not retry and say DENIED. No other tools."
+            }
+          ],
+          "attribution": "user",
+          "timestamp": 1794609490233
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "toolCall",
+              "id": "call_3343f7f803364e218809e514fbbee984|fc_049e6f72b6224759016af791534f4487d1acb7bed1d0832899",
+              "name": "write",
+              "arguments": {
+                "i": "Writing denied marker",
+                "path": "denied.txt",
+                "content": "DENIED"
+              },
+              "intent": "Writing denied marker"
+            }
+          ],
+          "api": "openai-codex-responses",
+          "provider": "openai-codex",
+          "model": "gpt-6-luna",
+          "usage": {
+            "input": 123,
+            "output": 30,
+            "cacheRead": 7680,
+            "cacheWrite": 0,
+            "totalTokens": 7833,
+            "cost": {
+              "input": 1.23e-5,
+              "output": 1.4999999999999999e-5,
+              "cacheRead": 7.68e-5,
+              "cacheWrite": 0,
+              "total": 0.0001041
+            },
+            "premiumRequests": 0
+          },
+          "stopReason": "toolUse",
+          "timestamp": 1794609490239,
+          "credentialId": 1,
+          "responseId": "resp_049e6f72b6224759016af79152af5487d1bab56de5235f522f",
+          "serviceTier": "default",
+          "providerPayload": {
+            "type": "openaiResponsesHistory",
+            "provider": "openai-codex",
+            "dt": true,
+            "items": [
+              {
+                "type": "function_call",
+                "id": "fc_049e6f72b6224759016af791534f4487d1acb7bed1d0832899",
+                "metadata": {
+                  "turn_id": "00000000-0000-4000-8000-000000000001"
+                },
+                "internal_chat_message_metadata_passthrough": {
+                  "create_time": 1794609491.3206823,
+                  "turn_id": "00000000-0000-4000-8000-000000000001"
+                },
+                "call_id": "call_3343f7f803364e218809e514fbbee984",
+                "name": "write",
+                "arguments": "{\"i\":\"Writing denied marker\",\"path\":\"denied.txt\",\"content\":\"DENIED\"}",
+                "status": "completed"
+              }
+            ]
+          },
+          "duration": 1459.8565080000003,
+          "ttft": 1097.4665009999999
+        },
+        {
+          "role": "toolResult",
+          "toolCallId": "call_3343f7f803364e218809e514fbbee984|fc_049e6f72b6224759016af791534f4487d1acb7bed1d0832899",
+          "toolName": "write",
+          "content": [
+            {
+              "type": "text",
+              "text": "Tool call denied by user: write"
+            }
+          ],
+          "details": {},
+          "isError": true,
+          "timestamp": 1794609491701
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "DENIED",
+              "textSignature": "{\"v\":1,\"id\":\"msg_049e6f72b6224759016af79154659887d1aacf98000d379f95\",\"phase\":\"final_answer\"}"
+            }
+          ],
+          "api": "openai-codex-responses",
+          "provider": "openai-codex",
+          "model": "gpt-6-luna",
+          "usage": {
+            "input": 170,
+            "output": 6,
+            "cacheRead": 7680,
+            "cacheWrite": 0,
+            "totalTokens": 7856,
+            "cost": {
+              "input": 1.7e-5,
+              "output": 3e-6,
+              "cacheRead": 7.68e-5,
+              "cacheWrite": 0,
+              "total": 9.68e-5
+            },
+            "premiumRequests": 0
+          },
+          "stopReason": "stop",
+          "timestamp": 1794609491703,
+          "credentialId": 1,
+          "responseId": "resp_049e6f72b6224759016af791540b7c87d1adadce0fa25bc6df",
+          "serviceTier": "default",
+          "providerPayload": {
+            "type": "openaiResponsesHistory",
+            "provider": "openai-codex",
+            "dt": true,
+            "items": [
+              {
+                "type": "message",
+                "id": "msg_049e6f72b6224759016af79154659887d1aacf98000d379f95",
+                "metadata": {
+                  "turn_id": "00000000-0000-4000-8000-000000000001"
+                },
+                "internal_chat_message_metadata_passthrough": {
+                  "content_token_count": 3,
+                  "create_time": 1794609492.403906,
+                  "turn_id": "00000000-0000-4000-8000-000000000001"
+                },
+                "role": "assistant",
+                "status": "completed",
+                "content": [
+                  {
+                    "type": "output_text",
+                    "text": "DENIED",
+                    "annotations": [],
+                    "logprobs": []
+                  }
+                ],
+                "phase": "final_answer"
+              }
+            ]
+          },
+          "duration": 887.1648100000002,
+          "ttft": 715.5665369999997
+        }
+      ],
+      "isTerminal": true,
+      "yielded": true
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "prompt_result",
+      "id": "approval-deny",
+      "agentInvoked": true,
+      "status": "completed",
+      "sessionSettled": true
+    }
+  },
+  {
+    "direction": "out",
+    "frame": {
+      "id": "get_session_stats",
+      "type": "get_session_stats"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "session_settled"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "id": "get_session_stats",
+      "type": "response",
+      "command": "get_session_stats",
+      "success": true,
+      "data": {
+        "sessionFile": "<capture>/sessions/2026-11-13T22-38-07-356Z_01a1d70f-9dfc-7700-b27c-ce38a6ab653d.jsonl",
+        "sessionId": "00000000-0000-4000-8000-000000000001",
+        "userMessages": 2,
+        "assistantMessages": 4,
+        "toolCalls": 2,
+        "toolResults": 2,
+        "totalMessages": 8,
+        "tokens": {
+          "input": 8209,
+          "output": 70,
+          "reasoning": 0,
+          "cacheRead": 22912,
+          "cacheWrite": 0,
+          "total": 31191
+        },
+        "cost": 0.00108502,
+        "premiumRequests": 0,
+        "contextUsage": {
+          "tokens": 7850,
+          "contextWindow": 272000,
+          "percent": 2.886029411764706
+        }
+      }
+    }
+  },
+  {
+    "direction": "out",
+    "frame": {
+      "type": "prompt",
+      "id": "question",
+      "message": "Use the ask tool once to ask which color I prefer, with options Red and Blue. Then reply only with my chosen color."
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "id": "question",
+      "type": "response",
+      "command": "prompt",
+      "success": true
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "agent_start"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "turn_start"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_start",
+      "message": {
+        "role": "user",
+        "content": [
+          {
+            "type": "text",
+            "text": "Use the ask tool once to ask which color I prefer, with options Red and Blue. Then reply only with my chosen color."
+          }
+        ],
+        "attribution": "user",
+        "timestamp": 1794609492592
+      },
+      "messageId": "msg-9"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_end",
+      "message": {
+        "role": "user",
+        "content": [
+          {
+            "type": "text",
+            "text": "Use the ask tool once to ask which color I prefer, with options Red and Blue. Then reply only with my chosen color."
+          }
+        ],
+        "attribution": "user",
+        "timestamp": 1794609492592
+      },
+      "messageId": "msg-9"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_start",
+      "message": {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "toolCall",
+            "id": "call_6e4e4d3b7a4047a0aee0057758a35254|fc_049e6f72b6224759016af79155bebc87d1985ca09bdb7a76dd",
+            "name": "ask",
+            "arguments": {}
+          }
+        ],
+        "api": "openai-codex-responses",
+        "provider": "openai-codex",
+        "model": "gpt-6-luna",
+        "usage": {
+          "input": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "totalTokens": 0,
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "total": 0
+          }
+        },
+        "stopReason": "stop",
+        "timestamp": 1794609492598,
+        "credentialId": 1
+      },
+      "messageId": "msg-10"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_start",
+        "contentIndex": 0,
+        "block": {
+          "type": "toolCall",
+          "id": "call_6e4e4d3b7a4047a0aee0057758a35254|fc_049e6f72b6224759016af79155bebc87d1985ca09bdb7a76dd",
+          "name": "ask",
+          "arguments": {}
+        }
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-10"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "{\""
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-10"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "i"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-10"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "\":\""
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-10"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "As"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-10"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "king"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-10"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": " color"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-10"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": " preference"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-10"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "\",\""
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-10"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "questions"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-10"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "\":["
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-10"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "{\""
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-10"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "id"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-10"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "\":\""
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-10"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "color"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-10"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "\",\""
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-10"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "question"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-10"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "\":\""
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-10"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "Which"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-10"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": " color"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-10"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": " do"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-10"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": " you"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-10"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": " prefer"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-10"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "?"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-10"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "\",\""
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-10"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "options"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-10"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "\":["
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-10"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "{\""
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-10"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "label"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-10"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "\":\""
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-10"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "Red"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-10"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "\",\""
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-10"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "description"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-10"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "\":"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-10"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "null"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-10"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": ",\""
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-10"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "preview"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-10"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "\":"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-10"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "null"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-10"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "},{\""
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-10"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "label"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-10"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "\":\""
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-10"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "Blue"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-10"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "\",\""
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-10"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "description"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-10"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "\":"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-10"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "null"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-10"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": ",\""
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-10"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "preview"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-10"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "\":"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-10"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "null"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-10"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "}"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-10"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "],\""
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-10"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "header"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-10"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "\":\""
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-10"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "Color"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-10"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "\",\""
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-10"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "multi"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-10"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "\":"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-10"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "false"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-10"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": ",\""
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-10"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "recommended"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-10"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "\":"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-10"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "null"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-10"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "}"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-10"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "]}"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-10"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_end",
+        "contentIndex": 0,
+        "toolCall": {
+          "type": "toolCall",
+          "id": "call_6e4e4d3b7a4047a0aee0057758a35254|fc_049e6f72b6224759016af79155bebc87d1985ca09bdb7a76dd",
+          "name": "ask",
+          "arguments": {
+            "i": "Asking color preference",
+            "questions": [
+              {
+                "id": "color",
+                "question": "Which color do you prefer?",
+                "options": [
+                  {
+                    "label": "Red",
+                    "description": null,
+                    "preview": null
+                  },
+                  {
+                    "label": "Blue",
+                    "description": null,
+                    "preview": null
+                  }
+                ],
+                "header": "Color",
+                "multi": false,
+                "recommended": null
+              }
+            ]
+          }
+        }
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-10"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_end",
+      "message": {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "toolCall",
+            "id": "call_6e4e4d3b7a4047a0aee0057758a35254|fc_049e6f72b6224759016af79155bebc87d1985ca09bdb7a76dd",
+            "name": "ask",
+            "arguments": {
+              "i": "Asking color preference",
+              "questions": [
+                {
+                  "id": "color",
+                  "question": "Which color do you prefer?",
+                  "options": [
+                    {
+                      "label": "Red",
+                      "description": null,
+                      "preview": null
+                    },
+                    {
+                      "label": "Blue",
+                      "description": null,
+                      "preview": null
+                    }
+                  ],
+                  "header": "Color",
+                  "multi": false,
+                  "recommended": null
+                }
+              ]
+            },
+            "intent": "Asking color preference"
+          }
+        ],
+        "api": "openai-codex-responses",
+        "provider": "openai-codex",
+        "model": "gpt-6-luna",
+        "usage": {
+          "input": 208,
+          "output": 77,
+          "cacheRead": 7680,
+          "cacheWrite": 0,
+          "totalTokens": 7965,
+          "cost": {
+            "input": 2.08e-5,
+            "output": 3.85e-5,
+            "cacheRead": 7.68e-5,
+            "cacheWrite": 0,
+            "total": 0.0001361
+          },
+          "premiumRequests": 0
+        },
+        "stopReason": "toolUse",
+        "timestamp": 1794609492598,
+        "credentialId": 1,
+        "responseId": "resp_049e6f72b6224759016af791550e6c87d187385f714d628f3c",
+        "serviceTier": "default",
+        "providerPayload": {
+          "type": "openaiResponsesHistory",
+          "provider": "openai-codex",
+          "dt": true,
+          "items": [
+            {
+              "type": "function_call",
+              "id": "fc_049e6f72b6224759016af79155bebc87d1985ca09bdb7a76dd",
+              "metadata": {
+                "turn_id": "00000000-0000-4000-8000-000000000001"
+              },
+              "internal_chat_message_metadata_passthrough": {
+                "create_time": 1794609493.769406,
+                "turn_id": "00000000-0000-4000-8000-000000000001"
+              },
+              "call_id": "call_6e4e4d3b7a4047a0aee0057758a35254",
+              "name": "ask",
+              "arguments": "{\"i\":\"Asking color preference\",\"questions\":[{\"id\":\"color\",\"question\":\"Which color do you prefer?\",\"options\":[{\"label\":\"Red\",\"description\":null,\"preview\":null},{\"label\":\"Blue\",\"description\":null,\"preview\":null}],\"header\":\"Color\",\"multi\":false,\"recommended\":null}]}",
+              "status": "completed"
+            }
+          ]
+        },
+        "duration": 2391.6534950000005,
+        "ttft": 1192.6517940000003,
+        "completedAt": 1794609494990
+      },
+      "messageId": "msg-10"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "extension_ui_request",
+      "id": "15cd1142f3f25043",
+      "method": "select",
+      "title": "Which color do you prefer?",
+      "options": ["Red", "Blue", "Other (type your own)"]
+    }
+  },
+  {
+    "direction": "out",
+    "frame": {
+      "type": "extension_ui_response",
+      "id": "15cd1142f3f25043",
+      "value": "Blue"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "tool_execution_start",
+      "toolCallId": "call_6e4e4d3b7a4047a0aee0057758a35254|fc_049e6f72b6224759016af79155bebc87d1985ca09bdb7a76dd",
+      "toolName": "ask",
+      "args": {
+        "questions": [
+          {
+            "id": "color",
+            "question": "Which color do you prefer?",
+            "options": [
+              {
+                "label": "Red"
+              },
+              {
+                "label": "Blue"
+              }
+            ],
+            "header": "Color",
+            "multi": false
+          }
+        ]
+      },
+      "intent": "Asking color preference"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "tool_execution_end",
+      "toolCallId": "call_6e4e4d3b7a4047a0aee0057758a35254|fc_049e6f72b6224759016af79155bebc87d1985ca09bdb7a76dd",
+      "toolName": "ask",
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "User selected: Blue"
+          }
+        ],
+        "details": {
+          "question": "Which color do you prefer?",
+          "options": ["Red", "Blue"],
+          "multi": false,
+          "selectedOptions": ["Blue"]
+        }
+      },
+      "isError": false
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_start",
+      "message": {
+        "role": "toolResult",
+        "toolCallId": "call_6e4e4d3b7a4047a0aee0057758a35254|fc_049e6f72b6224759016af79155bebc87d1985ca09bdb7a76dd",
+        "toolName": "ask",
+        "content": [
+          {
+            "type": "text",
+            "text": "User selected: Blue"
+          }
+        ],
+        "details": {
+          "question": "Which color do you prefer?",
+          "options": ["Red", "Blue"],
+          "multi": false,
+          "selectedOptions": ["Blue"]
+        },
+        "isError": false,
+        "timestamp": 1794609494992
+      },
+      "messageId": "msg-11"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_end",
+      "message": {
+        "role": "toolResult",
+        "toolCallId": "call_6e4e4d3b7a4047a0aee0057758a35254|fc_049e6f72b6224759016af79155bebc87d1985ca09bdb7a76dd",
+        "toolName": "ask",
+        "content": [
+          {
+            "type": "text",
+            "text": "User selected: Blue"
+          }
+        ],
+        "details": {
+          "question": "Which color do you prefer?",
+          "options": ["Red", "Blue"],
+          "multi": false,
+          "selectedOptions": ["Blue"]
+        },
+        "isError": false,
+        "timestamp": 1794609494992
+      },
+      "messageId": "msg-11"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "turn_end",
+      "message": {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "toolCall",
+            "id": "call_6e4e4d3b7a4047a0aee0057758a35254|fc_049e6f72b6224759016af79155bebc87d1985ca09bdb7a76dd",
+            "name": "ask",
+            "arguments": {
+              "i": "Asking color preference",
+              "questions": [
+                {
+                  "id": "color",
+                  "question": "Which color do you prefer?",
+                  "options": [
+                    {
+                      "label": "Red",
+                      "description": null,
+                      "preview": null
+                    },
+                    {
+                      "label": "Blue",
+                      "description": null,
+                      "preview": null
+                    }
+                  ],
+                  "header": "Color",
+                  "multi": false,
+                  "recommended": null
+                }
+              ]
+            },
+            "intent": "Asking color preference"
+          }
+        ],
+        "api": "openai-codex-responses",
+        "provider": "openai-codex",
+        "model": "gpt-6-luna",
+        "usage": {
+          "input": 208,
+          "output": 77,
+          "cacheRead": 7680,
+          "cacheWrite": 0,
+          "totalTokens": 7965,
+          "cost": {
+            "input": 2.08e-5,
+            "output": 3.85e-5,
+            "cacheRead": 7.68e-5,
+            "cacheWrite": 0,
+            "total": 0.0001361
+          },
+          "premiumRequests": 0
+        },
+        "stopReason": "toolUse",
+        "timestamp": 1794609492598,
+        "credentialId": 1,
+        "responseId": "resp_049e6f72b6224759016af791550e6c87d187385f714d628f3c",
+        "serviceTier": "default",
+        "providerPayload": {
+          "type": "openaiResponsesHistory",
+          "provider": "openai-codex",
+          "dt": true,
+          "items": [
+            {
+              "type": "function_call",
+              "id": "fc_049e6f72b6224759016af79155bebc87d1985ca09bdb7a76dd",
+              "metadata": {
+                "turn_id": "00000000-0000-4000-8000-000000000001"
+              },
+              "internal_chat_message_metadata_passthrough": {
+                "create_time": 1794609493.769406,
+                "turn_id": "00000000-0000-4000-8000-000000000001"
+              },
+              "call_id": "call_6e4e4d3b7a4047a0aee0057758a35254",
+              "name": "ask",
+              "arguments": "{\"i\":\"Asking color preference\",\"questions\":[{\"id\":\"color\",\"question\":\"Which color do you prefer?\",\"options\":[{\"label\":\"Red\",\"description\":null,\"preview\":null},{\"label\":\"Blue\",\"description\":null,\"preview\":null}],\"header\":\"Color\",\"multi\":false,\"recommended\":null}]}",
+              "status": "completed"
+            }
+          ]
+        },
+        "duration": 2391.6534950000005,
+        "ttft": 1192.6517940000003
+      },
+      "toolResults": [
+        {
+          "role": "toolResult",
+          "toolCallId": "call_6e4e4d3b7a4047a0aee0057758a35254|fc_049e6f72b6224759016af79155bebc87d1985ca09bdb7a76dd",
+          "toolName": "ask",
+          "content": [
+            {
+              "type": "text",
+              "text": "User selected: Blue"
+            }
+          ],
+          "details": {
+            "question": "Which color do you prefer?",
+            "options": ["Red", "Blue"],
+            "multi": false,
+            "selectedOptions": ["Blue"]
+          },
+          "isError": false,
+          "timestamp": 1794609494992
+        }
+      ]
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "turn_start"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_start",
+      "message": {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "text",
+            "text": "",
+            "textSignature": "{\"v\":1,\"id\":\"msg_049e6f72b6224759016af79157abc887d1b655b33158d0ee2e\",\"phase\":\"final_answer\"}"
+          }
+        ],
+        "api": "openai-codex-responses",
+        "provider": "openai-codex",
+        "model": "gpt-6-luna",
+        "usage": {
+          "input": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "totalTokens": 0,
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "total": 0
+          }
+        },
+        "stopReason": "stop",
+        "timestamp": 1794609494994,
+        "credentialId": 1
+      },
+      "messageId": "msg-12"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "text_start",
+        "contentIndex": 0,
+        "block": {
+          "type": "text",
+          "text": "",
+          "textSignature": "{\"v\":1,\"id\":\"msg_049e6f72b6224759016af79157abc887d1b655b33158d0ee2e\",\"phase\":\"final_answer\"}"
+        }
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-12"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "text_delta",
+        "contentIndex": 0,
+        "delta": "Blue"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-12"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "text_end",
+        "contentIndex": 0,
+        "content": "Blue",
+        "block": {
+          "type": "text",
+          "textSignature": "{\"v\":1,\"id\":\"msg_049e6f72b6224759016af79157abc887d1b655b33158d0ee2e\",\"phase\":\"final_answer\"}"
+        }
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-12"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_end",
+      "message": {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "text",
+            "text": "Blue",
+            "textSignature": "{\"v\":1,\"id\":\"msg_049e6f72b6224759016af79157abc887d1b655b33158d0ee2e\",\"phase\":\"final_answer\"}"
+          }
+        ],
+        "api": "openai-codex-responses",
+        "provider": "openai-codex",
+        "model": "gpt-6-luna",
+        "usage": {
+          "input": 171,
+          "output": 5,
+          "cacheRead": 7808,
+          "cacheWrite": 0,
+          "totalTokens": 7984,
+          "cost": {
+            "input": 1.7100000000000002e-5,
+            "output": 2.4999999999999998e-6,
+            "cacheRead": 7.808e-5,
+            "cacheWrite": 0,
+            "total": 9.768e-5
+          },
+          "premiumRequests": 0
+        },
+        "stopReason": "stop",
+        "timestamp": 1794609494994,
+        "credentialId": 1,
+        "responseId": "resp_049e6f72b6224759016af791575a1887d1bba2e9e0b8182d53",
+        "serviceTier": "default",
+        "providerPayload": {
+          "type": "openaiResponsesHistory",
+          "provider": "openai-codex",
+          "dt": true,
+          "items": [
+            {
+              "type": "message",
+              "id": "msg_049e6f72b6224759016af79157abc887d1b655b33158d0ee2e",
+              "metadata": {
+                "turn_id": "00000000-0000-4000-8000-000000000001"
+              },
+              "internal_chat_message_metadata_passthrough": {
+                "content_token_count": 2,
+                "create_time": 1794609495.6795278,
+                "turn_id": "00000000-0000-4000-8000-000000000001"
+              },
+              "role": "assistant",
+              "status": "completed",
+              "content": [
+                {
+                  "type": "output_text",
+                  "text": "Blue",
+                  "annotations": [],
+                  "logprobs": []
+                }
+              ],
+              "phase": "final_answer"
+            }
+          ]
+        },
+        "duration": 760.2909859999991,
+        "ttft": 709.7261480000006,
+        "completedAt": 1794609495754
+      },
+      "messageId": "msg-12"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "turn_end",
+      "message": {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "text",
+            "text": "Blue",
+            "textSignature": "{\"v\":1,\"id\":\"msg_049e6f72b6224759016af79157abc887d1b655b33158d0ee2e\",\"phase\":\"final_answer\"}"
+          }
+        ],
+        "api": "openai-codex-responses",
+        "provider": "openai-codex",
+        "model": "gpt-6-luna",
+        "usage": {
+          "input": 171,
+          "output": 5,
+          "cacheRead": 7808,
+          "cacheWrite": 0,
+          "totalTokens": 7984,
+          "cost": {
+            "input": 1.7100000000000002e-5,
+            "output": 2.4999999999999998e-6,
+            "cacheRead": 7.808e-5,
+            "cacheWrite": 0,
+            "total": 9.768e-5
+          },
+          "premiumRequests": 0
+        },
+        "stopReason": "stop",
+        "timestamp": 1794609494994,
+        "credentialId": 1,
+        "responseId": "resp_049e6f72b6224759016af791575a1887d1bba2e9e0b8182d53",
+        "serviceTier": "default",
+        "providerPayload": {
+          "type": "openaiResponsesHistory",
+          "provider": "openai-codex",
+          "dt": true,
+          "items": [
+            {
+              "type": "message",
+              "id": "msg_049e6f72b6224759016af79157abc887d1b655b33158d0ee2e",
+              "metadata": {
+                "turn_id": "00000000-0000-4000-8000-000000000001"
+              },
+              "internal_chat_message_metadata_passthrough": {
+                "content_token_count": 2,
+                "create_time": 1794609495.6795278,
+                "turn_id": "00000000-0000-4000-8000-000000000001"
+              },
+              "role": "assistant",
+              "status": "completed",
+              "content": [
+                {
+                  "type": "output_text",
+                  "text": "Blue",
+                  "annotations": [],
+                  "logprobs": []
+                }
+              ],
+              "phase": "final_answer"
+            }
+          ]
+        },
+        "duration": 760.2909859999991,
+        "ttft": 709.7261480000006
+      },
+      "toolResults": []
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "extension_ui_request",
+      "id": "15cd1143b3325044",
+      "method": "setWidget",
+      "widgetKey": "autoresearch"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "agent_end",
+      "messages": [
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "Use the ask tool once to ask which color I prefer, with options Red and Blue. Then reply only with my chosen color."
+            }
+          ],
+          "attribution": "user",
+          "timestamp": 1794609492592
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "toolCall",
+              "id": "call_6e4e4d3b7a4047a0aee0057758a35254|fc_049e6f72b6224759016af79155bebc87d1985ca09bdb7a76dd",
+              "name": "ask",
+              "arguments": {
+                "i": "Asking color preference",
+                "questions": [
+                  {
+                    "id": "color",
+                    "question": "Which color do you prefer?",
+                    "options": [
+                      {
+                        "label": "Red",
+                        "description": null,
+                        "preview": null
+                      },
+                      {
+                        "label": "Blue",
+                        "description": null,
+                        "preview": null
+                      }
+                    ],
+                    "header": "Color",
+                    "multi": false,
+                    "recommended": null
+                  }
+                ]
+              },
+              "intent": "Asking color preference"
+            }
+          ],
+          "api": "openai-codex-responses",
+          "provider": "openai-codex",
+          "model": "gpt-6-luna",
+          "usage": {
+            "input": 208,
+            "output": 77,
+            "cacheRead": 7680,
+            "cacheWrite": 0,
+            "totalTokens": 7965,
+            "cost": {
+              "input": 2.08e-5,
+              "output": 3.85e-5,
+              "cacheRead": 7.68e-5,
+              "cacheWrite": 0,
+              "total": 0.0001361
+            },
+            "premiumRequests": 0
+          },
+          "stopReason": "toolUse",
+          "timestamp": 1794609492598,
+          "credentialId": 1,
+          "responseId": "resp_049e6f72b6224759016af791550e6c87d187385f714d628f3c",
+          "serviceTier": "default",
+          "providerPayload": {
+            "type": "openaiResponsesHistory",
+            "provider": "openai-codex",
+            "dt": true,
+            "items": [
+              {
+                "type": "function_call",
+                "id": "fc_049e6f72b6224759016af79155bebc87d1985ca09bdb7a76dd",
+                "metadata": {
+                  "turn_id": "00000000-0000-4000-8000-000000000001"
+                },
+                "internal_chat_message_metadata_passthrough": {
+                  "create_time": 1794609493.769406,
+                  "turn_id": "00000000-0000-4000-8000-000000000001"
+                },
+                "call_id": "call_6e4e4d3b7a4047a0aee0057758a35254",
+                "name": "ask",
+                "arguments": "{\"i\":\"Asking color preference\",\"questions\":[{\"id\":\"color\",\"question\":\"Which color do you prefer?\",\"options\":[{\"label\":\"Red\",\"description\":null,\"preview\":null},{\"label\":\"Blue\",\"description\":null,\"preview\":null}],\"header\":\"Color\",\"multi\":false,\"recommended\":null}]}",
+                "status": "completed"
+              }
+            ]
+          },
+          "duration": 2391.6534950000005,
+          "ttft": 1192.6517940000003
+        },
+        {
+          "role": "toolResult",
+          "toolCallId": "call_6e4e4d3b7a4047a0aee0057758a35254|fc_049e6f72b6224759016af79155bebc87d1985ca09bdb7a76dd",
+          "toolName": "ask",
+          "content": [
+            {
+              "type": "text",
+              "text": "User selected: Blue"
+            }
+          ],
+          "details": {
+            "question": "Which color do you prefer?",
+            "options": ["Red", "Blue"],
+            "multi": false,
+            "selectedOptions": ["Blue"]
+          },
+          "isError": false,
+          "timestamp": 1794609494992
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Blue",
+              "textSignature": "{\"v\":1,\"id\":\"msg_049e6f72b6224759016af79157abc887d1b655b33158d0ee2e\",\"phase\":\"final_answer\"}"
+            }
+          ],
+          "api": "openai-codex-responses",
+          "provider": "openai-codex",
+          "model": "gpt-6-luna",
+          "usage": {
+            "input": 171,
+            "output": 5,
+            "cacheRead": 7808,
+            "cacheWrite": 0,
+            "totalTokens": 7984,
+            "cost": {
+              "input": 1.7100000000000002e-5,
+              "output": 2.4999999999999998e-6,
+              "cacheRead": 7.808e-5,
+              "cacheWrite": 0,
+              "total": 9.768e-5
+            },
+            "premiumRequests": 0
+          },
+          "stopReason": "stop",
+          "timestamp": 1794609494994,
+          "credentialId": 1,
+          "responseId": "resp_049e6f72b6224759016af791575a1887d1bba2e9e0b8182d53",
+          "serviceTier": "default",
+          "providerPayload": {
+            "type": "openaiResponsesHistory",
+            "provider": "openai-codex",
+            "dt": true,
+            "items": [
+              {
+                "type": "message",
+                "id": "msg_049e6f72b6224759016af79157abc887d1b655b33158d0ee2e",
+                "metadata": {
+                  "turn_id": "00000000-0000-4000-8000-000000000001"
+                },
+                "internal_chat_message_metadata_passthrough": {
+                  "content_token_count": 2,
+                  "create_time": 1794609495.6795278,
+                  "turn_id": "00000000-0000-4000-8000-000000000001"
+                },
+                "role": "assistant",
+                "status": "completed",
+                "content": [
+                  {
+                    "type": "output_text",
+                    "text": "Blue",
+                    "annotations": [],
+                    "logprobs": []
+                  }
+                ],
+                "phase": "final_answer"
+              }
+            ]
+          },
+          "duration": 760.2909859999991,
+          "ttft": 709.7261480000006
+        }
+      ],
+      "isTerminal": true,
+      "yielded": true
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "prompt_result",
+      "id": "question",
+      "agentInvoked": true,
+      "status": "completed",
+      "sessionSettled": true
+    }
+  },
+  {
+    "direction": "out",
+    "frame": {
+      "id": "get_session_stats",
+      "type": "get_session_stats"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "session_settled"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "id": "get_session_stats",
+      "type": "response",
+      "command": "get_session_stats",
+      "success": true,
+      "data": {
+        "sessionFile": "<capture>/sessions/2026-11-13T22-38-07-356Z_01a1d70f-9dfc-7700-b27c-ce38a6ab653d.jsonl",
+        "sessionId": "00000000-0000-4000-8000-000000000001",
+        "userMessages": 3,
+        "assistantMessages": 6,
+        "toolCalls": 3,
+        "toolResults": 3,
+        "totalMessages": 12,
+        "tokens": {
+          "input": 8588,
+          "output": 152,
+          "reasoning": 0,
+          "cacheRead": 38400,
+          "cacheWrite": 0,
+          "total": 47140
+        },
+        "cost": 0.0013188,
+        "premiumRequests": 0,
+        "contextUsage": {
+          "tokens": 7979,
+          "contextWindow": 272000,
+          "percent": 2.9334558823529413
+        }
+      }
+    }
+  },
+  {
+    "direction": "out",
+    "frame": {
+      "type": "prompt",
+      "id": "interrupt",
+      "message": "Use the bash tool to execute exactly: sleep 30. Then say FINISHED."
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "id": "interrupt",
+      "type": "response",
+      "command": "prompt",
+      "success": true
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "agent_start"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "turn_start"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_start",
+      "message": {
+        "role": "user",
+        "content": [
+          {
+            "type": "text",
+            "text": "Use the bash tool to execute exactly: sleep 30. Then say FINISHED."
+          }
+        ],
+        "attribution": "user",
+        "timestamp": 1794609495756
+      },
+      "messageId": "msg-13"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_end",
+      "message": {
+        "role": "user",
+        "content": [
+          {
+            "type": "text",
+            "text": "Use the bash tool to execute exactly: sleep 30. Then say FINISHED."
+          }
+        ],
+        "attribution": "user",
+        "timestamp": 1794609495756
+      },
+      "messageId": "msg-13"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_start",
+      "message": {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "toolCall",
+            "id": "call_526e9c51a27948a6b752e187dbe67e64|fc_049e6f72b6224759016af791590b9487d193331bfe2d6e3f50",
+            "name": "bash",
+            "arguments": {}
+          }
+        ],
+        "api": "openai-codex-responses",
+        "provider": "openai-codex",
+        "model": "gpt-6-luna",
+        "usage": {
+          "input": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "totalTokens": 0,
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "total": 0
+          }
+        },
+        "stopReason": "stop",
+        "timestamp": 1794609495762,
+        "credentialId": 1
+      },
+      "messageId": "msg-14"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_start",
+        "contentIndex": 0,
+        "block": {
+          "type": "toolCall",
+          "id": "call_526e9c51a27948a6b752e187dbe67e64|fc_049e6f72b6224759016af791590b9487d193331bfe2d6e3f50",
+          "name": "bash",
+          "arguments": {}
+        }
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-14"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "{\""
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-14"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "i"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-14"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "\":\""
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-14"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "Sleeping"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-14"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": " for"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-14"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": " thirty"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-14"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": " seconds"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-14"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "\",\""
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-14"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "command"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-14"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "\":\""
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-14"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "sleep"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-14"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": " "
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-14"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "30"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-14"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "\",\""
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-14"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "timeout"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-14"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "\":"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-14"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "null"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-14"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": ",\""
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-14"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "cwd"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-14"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "\":"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-14"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "null"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-14"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": ",\""
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-14"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "pty"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-14"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "\":"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-14"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "null"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-14"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": ",\""
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-14"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "async"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-14"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "\":"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-14"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "null"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-14"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": ",\""
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-14"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "name"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-14"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "\":"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-14"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "null"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-14"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": ",\""
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-14"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "ready"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-14"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "\":"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-14"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "null"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-14"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 0,
+        "delta": "}"
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-14"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_end",
+        "contentIndex": 0,
+        "toolCall": {
+          "type": "toolCall",
+          "id": "call_526e9c51a27948a6b752e187dbe67e64|fc_049e6f72b6224759016af791590b9487d193331bfe2d6e3f50",
+          "name": "bash",
+          "arguments": {
+            "i": "Sleeping for thirty seconds",
+            "command": "sleep 30",
+            "timeout": null,
+            "cwd": null,
+            "pty": null,
+            "async": null,
+            "name": null,
+            "ready": null
+          }
+        }
+      },
+      "message": {
+        "role": "assistant"
+      },
+      "messageId": "msg-14"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_end",
+      "message": {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "toolCall",
+            "id": "call_526e9c51a27948a6b752e187dbe67e64|fc_049e6f72b6224759016af791590b9487d193331bfe2d6e3f50",
+            "name": "bash",
+            "arguments": {
+              "i": "Sleeping for thirty seconds",
+              "command": "sleep 30",
+              "timeout": null,
+              "cwd": null,
+              "pty": null,
+              "async": null,
+              "name": null,
+              "ready": null
+            },
+            "intent": "Sleeping for thirty seconds"
+          }
+        ],
+        "api": "openai-codex-responses",
+        "provider": "openai-codex",
+        "model": "gpt-6-luna",
+        "usage": {
+          "input": 199,
+          "output": 51,
+          "cacheRead": 7808,
+          "cacheWrite": 0,
+          "totalTokens": 8058,
+          "cost": {
+            "input": 1.9900000000000003e-5,
+            "output": 2.55e-5,
+            "cacheRead": 7.808e-5,
+            "cacheWrite": 0,
+            "total": 0.00012348
+          },
+          "premiumRequests": 0
+        },
+        "stopReason": "toolUse",
+        "timestamp": 1794609495762,
+        "credentialId": 1,
+        "responseId": "resp_049e6f72b6224759016af7915857d487d19bce68472c796d47",
+        "serviceTier": "default",
+        "providerPayload": {
+          "type": "openaiResponsesHistory",
+          "provider": "openai-codex",
+          "dt": true,
+          "items": [
+            {
+              "type": "function_call",
+              "id": "fc_049e6f72b6224759016af791590b9487d193331bfe2d6e3f50",
+              "metadata": {
+                "turn_id": "00000000-0000-4000-8000-000000000001"
+              },
+              "internal_chat_message_metadata_passthrough": {
+                "create_time": 1794609497.0566113,
+                "turn_id": "00000000-0000-4000-8000-000000000001"
+              },
+              "call_id": "call_526e9c51a27948a6b752e187dbe67e64",
+              "name": "bash",
+              "arguments": "{\"i\":\"Sleeping for thirty seconds\",\"command\":\"sleep 30\",\"timeout\":null,\"cwd\":null,\"pty\":null,\"async\":null,\"name\":null,\"ready\":null}",
+              "status": "completed"
+            }
+          ]
+        },
+        "duration": 2045.532381000001,
+        "ttft": 1312.3487679999998,
+        "completedAt": 1794609497808
+      },
+      "messageId": "msg-14"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "tool_execution_start",
+      "toolCallId": "call_526e9c51a27948a6b752e187dbe67e64|fc_049e6f72b6224759016af791590b9487d193331bfe2d6e3f50",
+      "toolName": "bash",
+      "args": {
+        "command": "sleep 30"
+      },
+      "intent": "Sleeping for thirty seconds"
+    }
+  },
+  {
+    "direction": "out",
+    "frame": {
+      "id": "stop",
+      "type": "abort_and_restore_queue"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "extension_ui_request",
+      "id": "15cd1145b4725045",
+      "method": "select",
+      "title": "Allow tool: bash\nCommand: sleep 30",
+      "options": ["Approve", "Approve bash for this session", "Deny"]
+    }
+  },
+  {
+    "direction": "out",
+    "frame": {
+      "type": "extension_ui_response",
+      "id": "15cd1145b4725045",
+      "value": "Approve"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "queue_update",
+      "steering": [],
+      "followUp": [],
+      "liveSteered": 0
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "tool_execution_end",
+      "toolCallId": "call_526e9c51a27948a6b752e187dbe67e64|fc_049e6f72b6224759016af791590b9487d193331bfe2d6e3f50",
+      "toolName": "bash",
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "Command aborted"
+          }
+        ],
+        "details": {}
+      },
+      "isError": true
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_start",
+      "message": {
+        "role": "toolResult",
+        "toolCallId": "call_526e9c51a27948a6b752e187dbe67e64|fc_049e6f72b6224759016af791590b9487d193331bfe2d6e3f50",
+        "toolName": "bash",
+        "content": [
+          {
+            "type": "text",
+            "text": "Command aborted"
+          }
+        ],
+        "details": {},
+        "isError": true,
+        "timestamp": 1794609497810
+      },
+      "messageId": "msg-15"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "message_end",
+      "message": {
+        "role": "toolResult",
+        "toolCallId": "call_526e9c51a27948a6b752e187dbe67e64|fc_049e6f72b6224759016af791590b9487d193331bfe2d6e3f50",
+        "toolName": "bash",
+        "content": [
+          {
+            "type": "text",
+            "text": "Command aborted"
+          }
+        ],
+        "details": {},
+        "isError": true,
+        "timestamp": 1794609497810
+      },
+      "messageId": "msg-15"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "turn_end",
+      "message": {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "toolCall",
+            "id": "call_526e9c51a27948a6b752e187dbe67e64|fc_049e6f72b6224759016af791590b9487d193331bfe2d6e3f50",
+            "name": "bash",
+            "arguments": {
+              "i": "Sleeping for thirty seconds",
+              "command": "sleep 30",
+              "timeout": null,
+              "cwd": null,
+              "pty": null,
+              "async": null,
+              "name": null,
+              "ready": null
+            },
+            "intent": "Sleeping for thirty seconds"
+          }
+        ],
+        "api": "openai-codex-responses",
+        "provider": "openai-codex",
+        "model": "gpt-6-luna",
+        "usage": {
+          "input": 199,
+          "output": 51,
+          "cacheRead": 7808,
+          "cacheWrite": 0,
+          "totalTokens": 8058,
+          "cost": {
+            "input": 1.9900000000000003e-5,
+            "output": 2.55e-5,
+            "cacheRead": 7.808e-5,
+            "cacheWrite": 0,
+            "total": 0.00012348
+          },
+          "premiumRequests": 0
+        },
+        "stopReason": "toolUse",
+        "timestamp": 1794609495762,
+        "credentialId": 1,
+        "responseId": "resp_049e6f72b6224759016af7915857d487d19bce68472c796d47",
+        "serviceTier": "default",
+        "providerPayload": {
+          "type": "openaiResponsesHistory",
+          "provider": "openai-codex",
+          "dt": true,
+          "items": [
+            {
+              "type": "function_call",
+              "id": "fc_049e6f72b6224759016af791590b9487d193331bfe2d6e3f50",
+              "metadata": {
+                "turn_id": "00000000-0000-4000-8000-000000000001"
+              },
+              "internal_chat_message_metadata_passthrough": {
+                "create_time": 1794609497.0566113,
+                "turn_id": "00000000-0000-4000-8000-000000000001"
+              },
+              "call_id": "call_526e9c51a27948a6b752e187dbe67e64",
+              "name": "bash",
+              "arguments": "{\"i\":\"Sleeping for thirty seconds\",\"command\":\"sleep 30\",\"timeout\":null,\"cwd\":null,\"pty\":null,\"async\":null,\"name\":null,\"ready\":null}",
+              "status": "completed"
+            }
+          ]
+        },
+        "duration": 2045.532381000001,
+        "ttft": 1312.3487679999998
+      },
+      "toolResults": [
+        {
+          "role": "toolResult",
+          "toolCallId": "call_526e9c51a27948a6b752e187dbe67e64|fc_049e6f72b6224759016af791590b9487d193331bfe2d6e3f50",
+          "toolName": "bash",
+          "content": [
+            {
+              "type": "text",
+              "text": "Command aborted"
+            }
+          ],
+          "details": {},
+          "isError": true,
+          "timestamp": 1794609497810
+        }
+      ]
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "agent_end",
+      "messages": [
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "Use the bash tool to execute exactly: sleep 30. Then say FINISHED."
+            }
+          ],
+          "attribution": "user",
+          "timestamp": 1794609495756
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "toolCall",
+              "id": "call_526e9c51a27948a6b752e187dbe67e64|fc_049e6f72b6224759016af791590b9487d193331bfe2d6e3f50",
+              "name": "bash",
+              "arguments": {
+                "i": "Sleeping for thirty seconds",
+                "command": "sleep 30",
+                "timeout": null,
+                "cwd": null,
+                "pty": null,
+                "async": null,
+                "name": null,
+                "ready": null
+              },
+              "intent": "Sleeping for thirty seconds"
+            }
+          ],
+          "api": "openai-codex-responses",
+          "provider": "openai-codex",
+          "model": "gpt-6-luna",
+          "usage": {
+            "input": 199,
+            "output": 51,
+            "cacheRead": 7808,
+            "cacheWrite": 0,
+            "totalTokens": 8058,
+            "cost": {
+              "input": 1.9900000000000003e-5,
+              "output": 2.55e-5,
+              "cacheRead": 7.808e-5,
+              "cacheWrite": 0,
+              "total": 0.00012348
+            },
+            "premiumRequests": 0
+          },
+          "stopReason": "toolUse",
+          "timestamp": 1794609495762,
+          "credentialId": 1,
+          "responseId": "resp_049e6f72b6224759016af7915857d487d19bce68472c796d47",
+          "serviceTier": "default",
+          "providerPayload": {
+            "type": "openaiResponsesHistory",
+            "provider": "openai-codex",
+            "dt": true,
+            "items": [
+              {
+                "type": "function_call",
+                "id": "fc_049e6f72b6224759016af791590b9487d193331bfe2d6e3f50",
+                "metadata": {
+                  "turn_id": "00000000-0000-4000-8000-000000000001"
+                },
+                "internal_chat_message_metadata_passthrough": {
+                  "create_time": 1794609497.0566113,
+                  "turn_id": "00000000-0000-4000-8000-000000000001"
+                },
+                "call_id": "call_526e9c51a27948a6b752e187dbe67e64",
+                "name": "bash",
+                "arguments": "{\"i\":\"Sleeping for thirty seconds\",\"command\":\"sleep 30\",\"timeout\":null,\"cwd\":null,\"pty\":null,\"async\":null,\"name\":null,\"ready\":null}",
+                "status": "completed"
+              }
+            ]
+          },
+          "duration": 2045.532381000001,
+          "ttft": 1312.3487679999998
+        },
+        {
+          "role": "toolResult",
+          "toolCallId": "call_526e9c51a27948a6b752e187dbe67e64|fc_049e6f72b6224759016af791590b9487d193331bfe2d6e3f50",
+          "toolName": "bash",
+          "content": [
+            {
+              "type": "text",
+              "text": "Command aborted"
+            }
+          ],
+          "details": {},
+          "isError": true,
+          "timestamp": 1794609497810
+        }
+      ],
+      "isTerminal": true,
+      "yielded": true
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "extension_ui_request",
+      "id": "15cd1145b5325046",
+      "method": "setWidget",
+      "widgetKey": "autoresearch"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "id": "stop",
+      "type": "response",
+      "command": "abort_and_restore_queue",
+      "success": true,
+      "data": {
+        "steering": [],
+        "followUp": []
+      }
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "prompt_result",
+      "id": "interrupt",
+      "agentInvoked": true,
+      "status": "completed",
+      "sessionSettled": true
+    }
+  },
+  {
+    "direction": "out",
+    "frame": {
+      "id": "get_session_stats",
+      "type": "get_session_stats"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "type": "session_settled"
+    }
+  },
+  {
+    "direction": "in",
+    "frame": {
+      "id": "get_session_stats",
+      "type": "response",
+      "command": "get_session_stats",
+      "success": true,
+      "data": {
+        "sessionFile": "<capture>/sessions/2026-11-13T22-38-07-356Z_01a1d70f-9dfc-7700-b27c-ce38a6ab653d.jsonl",
+        "sessionId": "00000000-0000-4000-8000-000000000001",
+        "userMessages": 4,
+        "assistantMessages": 7,
+        "toolCalls": 4,
+        "toolResults": 4,
+        "totalMessages": 15,
+        "tokens": {
+          "input": 8787,
+          "output": 203,
+          "reasoning": 0,
+          "cacheRead": 46208,
+          "cacheWrite": 0,
+          "total": 55198
+        },
+        "cost": 0.00144228,
+        "premiumRequests": 0,
+        "contextUsage": {
+          "tokens": 8009,
+          "contextWindow": 272000,
+          "percent": 2.944485294117647
+        }
+      }
+    }
+  }
+]

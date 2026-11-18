@@ -107,7 +107,12 @@ export function threadSupportsProviderHandoff(projection: Projection | null | un
     return session.capabilities.sessions.supportsProviderSwitchingViaHandoff;
   }
   if (resolveActiveThreadRun(projection) !== null) return false;
-  if (projection.thread.historyOrigin === "v1_import" || projection.runs.length === 0) return true;
+  if (
+    projection.thread.importedFrom !== undefined ||
+    projection.thread.historyOrigin === "v1_import" ||
+    projection.runs.length === 0
+  )
+    return true;
 
   // Detaching a stopped session removes it from the projection. The server still
   // hands off from saved app history, which needs the source provider thread but

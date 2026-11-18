@@ -1,6 +1,6 @@
 import { useAtomValue } from "@effect/atom-react";
 import { NotificationSettings } from "./NotificationSettings";
-import { PRIVACY_POLICY_URL } from "../../legalLinks";
+import { UPSTREAM_PRODUCT_NAME, UPSTREAM_REPOSITORY_URL } from "@t3tools/shared/productIdentity";
 import { CheckIcon } from "lucide-react";
 import { msg, T, useGT, useMessages } from "gt-react";
 import { Link, useNavigate } from "@tanstack/react-router";
@@ -65,7 +65,11 @@ import { ProjectDefaultsSettings } from "./ProjectDefaultsSettings";
 import { ThreadTitleInstructionsSettings } from "./ThreadTitleInstructionsSettings";
 import { SnoozePresetsRow } from "./SnoozePresetsSettings";
 import { useDesktopUpdateState } from "../../state/desktopUpdate";
-import { managedTelemetryOffMessage, usePrimaryManagedPolicy } from "../../state/managedPolicy";
+import {
+  managedTelemetryOffMessage,
+  NO_ANALYTICS_BY_DEFAULT,
+  usePrimaryManagedPolicy,
+} from "../../state/managedPolicy";
 import {
   getTextGenerationModelOptionsByInstance,
   resolveAppModelSelectionState,
@@ -2339,27 +2343,42 @@ export function AboutSettingsPanel() {
         )}
       </SettingsSection>
 
-      <SettingsSection id="legal" title="Legal">
+      <SettingsSection id="credits" title="Credits">
         <SettingsRow
-          {...searchableSetting("privacy-policy")}
+          title={`Based on ${UPSTREAM_PRODUCT_NAME}`}
           description={
-            telemetryOff === undefined
-              ? "How we handle your data, including the anonymous usage data T3 Code collects."
-              : `How we handle your data. ${telemetryOff}`
+            <>
+              U4 Code is an independent fork of {UPSTREAM_PRODUCT_NAME} by T3 Tools Inc. It is not
+              affiliated with or endorsed by T3 Tools Inc. {UPSTREAM_PRODUCT_NAME} is MIT licensed;
+              its copyright notice is kept in{" "}
+              <Link to="/settings/open-source-licenses" className="underline underline-offset-2">
+                Open source licenses
+              </Link>
+              .
+            </>
           }
           control={
             <Button
-              render={<a href={PRIVACY_POLICY_URL} target="_blank" rel="noreferrer noopener" />}
+              render={
+                <a href={UPSTREAM_REPOSITORY_URL} target="_blank" rel="noreferrer noopener" />
+              }
               size="sm"
               variant="outline"
             >
-              View policy
+              Upstream repository
             </Button>
           }
         />
+      </SettingsSection>
+
+      <SettingsSection id="legal" title="Legal">
+        <SettingsRow
+          {...searchableSetting("privacy-policy")}
+          description={`${NO_ANALYTICS_BY_DEFAULT} Agent providers you use have their own terms.${telemetryOff === undefined ? "" : ` ${telemetryOff}`}`}
+        />
         <SettingsRow
           {...searchableSetting("open-source-licenses")}
-          description="Notices for dependencies, assets, and optional tools used by T3 Code."
+          description="Notices for dependencies, assets, and optional tools used by U4 Code."
           control={
             <Button
               render={<Link to="/settings/open-source-licenses" />}

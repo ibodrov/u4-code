@@ -1,4 +1,5 @@
 import * as HostProcess from "@t3tools/shared/HostProcess";
+import { PRODUCT_BASE_NAME, PRODUCT_CLI_COMMAND } from "@t3tools/shared/productIdentity";
 import { pathSetupCommand } from "@t3tools/shared/shell";
 import * as Console from "effect/Console";
 import * as Duration from "effect/Duration";
@@ -19,7 +20,7 @@ import {
   recordPinnedRuntimeLauncher,
   writePosixLauncher,
 } from "../cloud/pinnedRuntime.ts";
-import { detectCliRunner, resolveCliCommand, resolveEntryPath } from "./invocation.ts";
+import { detectCliRunner, resolveEntryPath } from "./invocation.ts";
 
 export class CliInstallError extends Schema.TaggedError<CliInstallError>()("CliInstallError", {
   reason: Schema.String,
@@ -43,7 +44,7 @@ const standaloneRuntime = Effect.gen(function* () {
   return Option.some({ executable, versionsDir, runtimeDir });
 });
 
-/** Installs this runtime as the `t3` command the way the install scripts do, replacing only our own launcher. */
+/** Installs this runtime as the product command the way the install scripts do, replacing only our own launcher. */
 export const installCli = Effect.fn("cli.install.install")(function* () {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
@@ -53,29 +54,26 @@ export const installCli = Effect.fn("cli.install.install")(function* () {
   const runtime = yield* standaloneRuntime;
   const windows = platform === "win32";
   if (Option.isNone(runtime)) {
-    const script = windows
-      ? "irm https://t3.codes/install.ps1 | iex"
-      : "curl -fsSL https://t3.codes/install.sh | sh";
     return yield* new CliInstallError({
-      reason: `Only the standalone t3 can install itself. Use \`${script}\`, or Settings in the desktop app.`,
+      reason: `Only the standalone ${PRODUCT_BASE_NAME} CLI can install itself. Run install from your standalone runtime, or use Settings in the desktop app.`,
     });
   }
   const { executable, versionsDir, runtimeDir } = runtime.value;
   // cmd.exe expands `%` and reads the shim in the OEM code page, so such a path would not run.
   if (windows && /[%\u0080-\uffff]/.test(executable)) {
     return yield* new CliInstallError({
-      reason: `A t3.cmd cannot run ${executable}, because the path has % or non-ASCII characters. Keep using npx t3.`,
+      reason: `A ${PRODUCT_CLI_COMMAND}.cmd cannot run ${executable}, because the path has % or non-ASCII characters. Move the standalone runtime to a path without those characters.`,
     });
   }
   // Absolute, so the PATH hint never adds a folder that changes with the working directory.
   const binDir = path.resolve(
     environment.T3CODE_INSTALL_BIN_DIR?.trim() || path.join(home, ".local", "bin"),
   );
-  const name = windows ? "t3.cmd" : "t3";
+  const name = windows ? `${PRODUCT_CLI_COMMAND}.cmd` : PRODUCT_CLI_COMMAND;
   const link = path.join(binDir, name);
   const failed = (reason: string) => (cause: unknown) => new CliInstallError({ reason, cause });
 
-  // Resolve fully so a link through a symlinked T3 home still counts as ours; a dangling one
+  // Resolve fully so a link through a symlinked product home still counts as ours; a dangling one
   // (a pruned version) falls back to its own text.
   const realVersionsDir = yield* fs
     .realPath(versionsDir)
@@ -108,7 +106,7 @@ export const installCli = Effect.fn("cli.install.install")(function* () {
     )
   ) {
     return yield* new CliInstallError({
-      reason: `Another t3 is already at ${link}. Remove it, then run this again.`,
+      reason: `Another ${PRODUCT_CLI_COMMAND} is already at ${link}. Remove it, then run this again.`,
     });
   }
 
@@ -148,13 +146,15 @@ export const installCli = Effect.fn("cli.install.install")(function* () {
   const same = (entry: string) => entry !== "" && normalize(entry) === normalize(binDir);
   const entries = (environment.PATH ?? environment.Path ?? "").split(windows ? ";" : ":");
   const onPath = entries.some(same);
-  // A t3 earlier on PATH runs instead, and an added folder goes last. Runner caches (npx's own
+  // A product command earlier on PATH runs instead, and an added folder goes last. Runner caches (npx's own
   // .bin) are not installs.
   const firstOther = Effect.gen(function* () {
     for (const entry of entries) {
       if (same(entry)) return undefined;
       if (!path.isAbsolute(entry) || detectCliRunner(`${entry}/`) !== null) continue;
-      for (const name of windows ? ["t3.cmd", "t3.exe"] : ["t3"]) {
+      for (const name of windows
+        ? [`${PRODUCT_CLI_COMMAND}.cmd`, `${PRODUCT_CLI_COMMAND}.exe`]
+        : [PRODUCT_CLI_COMMAND]) {
         const candidate = path.join(entry, name);
         if (yield* fs.exists(candidate).pipe(Effect.orElseSucceed(() => false))) return candidate;
       }
@@ -190,30 +190,34 @@ export const installCli = Effect.fn("cli.install.install")(function* () {
 const reportInstalled = Effect.fn("cli.install.report")(function* (
   installed: Effect.Success<ReturnType<typeof installCli>>,
 ) {
-  yield* Console.log(`Installed t3 ${packageJson.version} at ${installed.link}.`);
+  yield* Console.log(`Installed ${PRODUCT_BASE_NAME} ${packageJson.version} at ${installed.link}.`);
   if (installed.shadowedBy !== undefined) {
     return yield* Console.log(
-      `Another t3 at ${installed.shadowedBy} runs first, so run ${installed.link} to use this one.`,
+      `Another ${PRODUCT_CLI_COMMAND} at ${installed.shadowedBy} runs first, so run ${installed.link} to use this one.`,
     );
   }
-  if (installed.onPath) return yield* Console.log("Run `t3` to get started.");
+  if (installed.onPath) return yield* Console.log(`Run \`${PRODUCT_CLI_COMMAND}\` to get started.`);
   if (installed.pathCommand === undefined) {
-    return yield* Console.log(`Add ${installed.binDir} to your PATH, then run \`t3\`.`);
+    return yield* Console.log(
+      `Add ${installed.binDir} to your PATH, then run \`${PRODUCT_CLI_COMMAND}\`.`,
+    );
   }
   if ((yield* HostProcess.Platform) === "win32") {
     yield* Console.log(
       `${installed.binDir} is not on your PATH yet. In this PowerShell window, run:`,
     );
     yield* Console.log(`  ${installed.pathCommand}`);
-    return yield* Console.log("Then run `t3`. For new windows, add the folder to your PATH.");
+    return yield* Console.log(
+      `Then run \`${PRODUCT_CLI_COMMAND}\`. For new windows, add the folder to your PATH.`,
+    );
   }
   yield* Console.log(`${installed.binDir} is not on your PATH yet. Add it with:`);
   yield* Console.log(`  ${installed.pathCommand}`);
-  yield* Console.log("Then open a new terminal and run `t3`.");
+  yield* Console.log(`Then open a new terminal and run \`${PRODUCT_CLI_COMMAND}\`.`);
 });
 
 export const installCommand = Command.make("install").pipe(
-  Command.withDescription("Install this version as the `t3` command."),
+  Command.withDescription(`Install this version as the \`${PRODUCT_CLI_COMMAND}\` command.`),
   Command.withHandler(() => installCli().pipe(Effect.flatMap(reportInstalled))),
 );
 
@@ -286,8 +290,8 @@ export const inTerminalForeground = Effect.gen(function* () {
 });
 
 /**
- * Before a command run through npx, pnpm dlx, or bunx at a terminal, asks to install the `t3`
- * command. Yes is the default. No, no answer, or a failed install is saved in the T3 home until
+ * Before a command run through npx, pnpm dlx, or bunx at a terminal, asks to install the product
+ * command. Yes is the default. No, no answer, or a failed install is saved in the product home until
  * the next minor release. Returns false when the user quits the prompt, so the command does not run.
  */
 export const offerCliInstall = Effect.fn("cli.install.offer")(function* <E, R, E2, R2>(input: {
@@ -314,16 +318,22 @@ export const offerCliInstall = Effect.fn("cli.install.offer")(function* <E, R, E
   if (Option.isNone(runtime)) return true;
   const { runtimeDir } = runtime.value;
 
-  // Any t3 already installed means no prompt: ours (even when off PATH) or another on PATH.
+  // Any product command already installed means no prompt: ours (even when off PATH) or another on PATH.
   // Runners put their own cache's node_modules/.bin on PATH, so skip those.
   const windows = platform === "win32";
-  const names = windows ? ["t3.cmd", "t3.exe"] : ["t3"];
+  const names = windows
+    ? [`${PRODUCT_CLI_COMMAND}.cmd`, `${PRODUCT_CLI_COMMAND}.exe`]
+    : [PRODUCT_CLI_COMMAND];
   const launchers = yield* fs
     .readFileString(path.join(runtimeDir, "launchers"))
     .pipe(Effect.orElseSucceed(() => ""));
   const candidates = [
-    ...launchers.split(/\r?\n/).filter(Boolean),
-    path.join(path.dirname(runtimeDir), "bin", windows ? "t3.cmd" : "t3"),
+    ...launchers.split(/\r?\n/).filter((launcher) => names.includes(path.basename(launcher))),
+    path.join(
+      path.dirname(runtimeDir),
+      "bin",
+      windows ? `${PRODUCT_CLI_COMMAND}.cmd` : PRODUCT_CLI_COMMAND,
+    ),
     ...(environment.PATH ?? environment.Path ?? "")
       .split(windows ? ";" : ":")
       .filter(
@@ -341,12 +351,14 @@ export const offerCliInstall = Effect.fn("cli.install.offer")(function* <E, R, E
   if (declined.trim() === minor) return true;
   if (!(yield* input.foreground)) return true;
 
-  const installHint = `Run \`${yield* resolveCliCommand("install")}\` any time.`;
+  const installHint = `Run this standalone ${PRODUCT_BASE_NAME} CLI with \`install\` any time.`;
   const saveDecline = fs.writeFileString(declinedFile, `${minor}\n`).pipe(Effect.ignore);
   const answer = yield* input.confirm.pipe(Effect.timeoutOption(PROMPT_TIMEOUT));
   if (Option.isNone(answer)) {
     yield* saveDecline;
-    yield* Console.log(`\nNo answer, so t3 was not installed. ${installHint}\n`);
+    yield* Console.log(
+      `\nNo answer, so ${PRODUCT_CLI_COMMAND} was not installed. ${installHint}\n`,
+    );
     return true;
   }
   if (answer.value === undefined) return false;
@@ -358,7 +370,10 @@ export const offerCliInstall = Effect.fn("cli.install.offer")(function* <E, R, E
   yield* installCli().pipe(
     Effect.flatMap(reportInstalled),
     Effect.catch((error) =>
-      Effect.andThen(saveDecline, Console.error(`Could not install t3: ${error.message}`)),
+      Effect.andThen(
+        saveDecline,
+        Console.error(`Could not install ${PRODUCT_CLI_COMMAND}: ${error.message}`),
+      ),
     ),
   );
   yield* Console.log("");
@@ -367,7 +382,7 @@ export const offerCliInstall = Effect.fn("cli.install.offer")(function* <E, R, E
 
 export const confirmCliInstall = Prompt.run(
   Prompt.Confirm({
-    message: "Install the t3 command? Then you can run `t3` directly.",
+    message: `Install the ${PRODUCT_CLI_COMMAND} command? Then you can run \`${PRODUCT_CLI_COMMAND}\` directly.`,
     initial: true,
   }),
 ).pipe(Effect.catchTags({ QuitError: () => Effect.void }));

@@ -457,6 +457,8 @@ export const make = Effect.gen(function* () {
   const refreshForEvent = (event: OrchestrationV2DomainEvent) => {
     switch (event.type) {
       case "thread.created":
+        if (event.payload.importedFrom !== undefined) return Effect.void;
+        return enqueueThread(event.threadId, false);
       case "thread.unarchived":
       case "thread.metadata-updated":
         return enqueueThread(event.threadId, false);

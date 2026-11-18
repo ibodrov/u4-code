@@ -191,6 +191,11 @@
         "exclude": [
           "react-native-pdf-jsi"
         ]
+      },
+      "android": {
+        "exclude": [
+          "expo-observe"
+        ]
       }
     }
   },

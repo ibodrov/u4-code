@@ -445,6 +445,18 @@
         object-fit: contain;
       }
 
+      #boot-shell-credit {
+        position: absolute;
+        right: 0;
+        bottom: 16px;
+        left: 0;
+        margin: 0;
+        font-size: 11px;
+        line-height: 16px;
+        text-align: center;
+        opacity: 0.55;
+      }
+
       /* App CSS locks body and #root scrolling once main loads, so the error screen scrolls itself. */
       #boot-shell:has(> #boot-error) {
         height: 100%;
@@ -681,14 +693,15 @@
       if (desktopDisplayName) document.title = desktopDisplayName;
     </script>
     <!-- vite.config.ts stamps the web build's channel into this title. -->
-    <title>T3 Code</title>
+    <title>U4 Code</title>
   </head>
   <body>
     <div id="root">
       <div id="boot-shell">
-        <div id="boot-shell-card" aria-label="T3 Code splash screen">
-          <img id="boot-shell-logo" src="/apple-touch-icon.png" alt="T3 Code" />
+        <div id="boot-shell-card" aria-label="U4 Code splash screen">
+          <img id="boot-shell-logo" src="/apple-touch-icon.png" alt="U4 Code" />
         </div>
+        <p id="boot-shell-credit"></p>
       </div>
     </div>
     <script type="module" src="/src/bootstrap.ts"></script>

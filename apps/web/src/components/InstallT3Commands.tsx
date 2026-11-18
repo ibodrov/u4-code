@@ -2,10 +2,6 @@ import { cn } from "~/lib/utils";
 
 import { CommandBlock } from "./CommandBlock";
 
-/**
- * Setup steps for another computer: install `t3`, then run `command`. Both installers are shown
- * because the browser showing this is often not the computer being set up.
- */
 export function InstallT3Commands({
   command,
   className,
@@ -15,16 +11,14 @@ export function InstallT3Commands({
 }) {
   return (
     <div className={cn("space-y-2", className)}>
-      <p className="text-xs text-muted-foreground">macOS, Linux</p>
-      <CommandBlock command="curl -fsSL https://t3.codes/install.sh | sh" />
-      <p className="text-xs text-muted-foreground">Windows (PowerShell)</p>
-      <CommandBlock command="irm https://t3.codes/install.ps1 | iex" />
-      <p className="text-xs text-muted-foreground">Then</p>
+      <p className="text-xs text-muted-foreground">
+        Install a verified U4 Code build from your approved U4 release source on the other computer,
+        then run:
+      </p>
       <CommandBlock command={command} />
       <p className="text-xs text-muted-foreground">
-        Skip the install if you already have <code className="font-mono">t3</code>. If{" "}
-        <code className="font-mono">t3</code> is not found after installing, add the folder the
-        installer names to your PATH.
+        Use the <code className="font-mono">u4</code> CLI supplied with your U4 build. Add its
+        folder to your PATH if the command is not found.
       </p>
     </div>
   );

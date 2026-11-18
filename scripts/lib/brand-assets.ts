@@ -61,31 +61,30 @@ const WEB_ICON_TARGET_FILENAMES = {
   icon512Png: "icon-512x512.png",
 } as const;
 
+// U4 Code renders its icons from assets/u4/icon.svg with assets/u4/generate.sh. The T3 sets in
+// BRAND_ASSET_PATHS stay for the mobile app and its export scripts, which U4 does not ship.
+type U4IconVariant = "dev" | "prod";
+
+export const resolveU4DesktopIconPaths = (variant: U4IconVariant) => ({
+  macIconPng: `assets/u4/${variant}/icon-macos-1024.png`,
+  linuxIconPng: `assets/u4/${variant}/icon-1024.png`,
+  windowsIconIco: `assets/u4/${variant}/favicon.ico`,
+});
+
+const resolveU4WebIconSourcePaths = (variant: U4IconVariant) => ({
+  faviconIco: `assets/u4/${variant}/${WEB_ICON_TARGET_FILENAMES.faviconIco}`,
+  favicon16Png: `assets/u4/${variant}/${WEB_ICON_TARGET_FILENAMES.favicon16Png}`,
+  favicon32Png: `assets/u4/${variant}/${WEB_ICON_TARGET_FILENAMES.favicon32Png}`,
+  appleTouchIconPng: `assets/u4/${variant}/${WEB_ICON_TARGET_FILENAMES.appleTouchIconPng}`,
+  icon192Png: `assets/u4/${variant}/${WEB_ICON_TARGET_FILENAMES.icon192Png}`,
+  icon512Png: `assets/u4/${variant}/${WEB_ICON_TARGET_FILENAMES.icon512Png}`,
+});
+
+// U4 has no nightly artwork; a nightly build uses the production set.
 const WEB_ICON_SOURCE_PATHS_BY_BRAND = {
-  development: {
-    faviconIco: BRAND_ASSET_PATHS.developmentWebFaviconIco,
-    favicon16Png: BRAND_ASSET_PATHS.developmentWebFavicon16Png,
-    favicon32Png: BRAND_ASSET_PATHS.developmentWebFavicon32Png,
-    appleTouchIconPng: BRAND_ASSET_PATHS.developmentWebAppleTouchIconPng,
-    icon192Png: BRAND_ASSET_PATHS.developmentWebIcon192Png,
-    icon512Png: BRAND_ASSET_PATHS.developmentWebIcon512Png,
-  },
-  nightly: {
-    faviconIco: BRAND_ASSET_PATHS.nightlyWebFaviconIco,
-    favicon16Png: BRAND_ASSET_PATHS.nightlyWebFavicon16Png,
-    favicon32Png: BRAND_ASSET_PATHS.nightlyWebFavicon32Png,
-    appleTouchIconPng: BRAND_ASSET_PATHS.nightlyWebAppleTouchIconPng,
-    icon192Png: BRAND_ASSET_PATHS.nightlyWebIcon192Png,
-    icon512Png: BRAND_ASSET_PATHS.nightlyWebIcon512Png,
-  },
-  production: {
-    faviconIco: BRAND_ASSET_PATHS.productionWebFaviconIco,
-    favicon16Png: BRAND_ASSET_PATHS.productionWebFavicon16Png,
-    favicon32Png: BRAND_ASSET_PATHS.productionWebFavicon32Png,
-    appleTouchIconPng: BRAND_ASSET_PATHS.productionWebAppleTouchIconPng,
-    icon192Png: BRAND_ASSET_PATHS.productionWebIcon192Png,
-    icon512Png: BRAND_ASSET_PATHS.productionWebIcon512Png,
-  },
+  development: resolveU4WebIconSourcePaths("dev"),
+  nightly: resolveU4WebIconSourcePaths("prod"),
+  production: resolveU4WebIconSourcePaths("prod"),
 } as const satisfies Record<WebAssetBrand, Record<keyof typeof WEB_ICON_TARGET_FILENAMES, string>>;
 
 export function resolveWebIconOverrides(

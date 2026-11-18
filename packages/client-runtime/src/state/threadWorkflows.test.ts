@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
-import type { OrchestrationV2ThreadProjection } from "@t3tools/contracts";
+import * as DateTime from "effect/DateTime";
+import { ThreadId, EnvironmentId, type OrchestrationV2ThreadProjection } from "@t3tools/contracts";
 
 import {
   canForkProjectedAssistantItem,
@@ -51,6 +52,32 @@ describe("thread workflows", () => {
     } as unknown as OrchestrationV2ThreadProjection;
 
     expect(threadSupportsProviderHandoff(projection)).toBe(true);
+    expect(
+      threadSupportsProviderHandoff({
+        ...projection,
+        providerThreads: [],
+        thread: {
+          ...projection.thread,
+          activeProviderThreadId: null,
+          importedFrom: {
+            app: "t3",
+            environmentId: EnvironmentId.make("source"),
+            threadId: ThreadId.make("source-thread"),
+            unitRootThreadId: ThreadId.make("source-thread"),
+            generation: 1,
+            importedAt: DateTime.makeUnsafe("2026-11-16T00:00:00Z"),
+            sourceDigest: "digest",
+            unitDigest: "digest",
+            dependencyKey: "key",
+            dependencies: [],
+            importedRowCounts: {},
+            ownedTransferIds: [],
+            lastRunOrdinal: 1,
+          },
+        },
+      }),
+    ).toBe(true);
+
     expect(
       threadSupportsProviderHandoff({
         ...projection,

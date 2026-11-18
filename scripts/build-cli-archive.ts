@@ -27,6 +27,7 @@ import {
   resolveFffNativeDependencies,
   STAGE_INSTALL_ARGS,
 } from "./build-desktop-artifact.ts";
+import { libatomicProvenance } from "./lib/linux-libatomic-provenance.ts";
 import { assertLinuxArm64PageCompatibility } from "./lib/linux-arm64-sea.ts";
 import { selectCliRuntimeExternalDependencies } from "./lib/cli-external-packages.ts";
 import { signWithJsign } from "./lib/windows-jsign.ts";
@@ -261,8 +262,8 @@ const stageWebClient = Effect.fn("stageWebClient")(function* (source: string, ta
   }
 });
 
-/** Node links libatomic.so.1, which Ubuntu server and container images lack, so t3 carries its own. */
-const bundleLinuxLibatomic = Effect.fn("bundleLinuxLibatomic")(function* (input: {
+/** Minimal Linux hosts can lack Node's libatomic dependency, so the archive carries it. */
+export const bundleLinuxLibatomic = Effect.fn("bundleLinuxLibatomic")(function* (input: {
   readonly repoRoot: string;
   readonly contentDir: string;
   readonly executablePath: string;
@@ -286,27 +287,25 @@ const bundleLinuxLibatomic = Effect.fn("bundleLinuxLibatomic")(function* (input:
     ChildProcess.make("dpkg-query", ["-S", yield* fs.realPath(source)]),
   );
   // Keep the arch qualifier so a second installed arch cannot add its own line.
-  const [, qualifiedPkg, pkg] = /^(([^:\s]+)(?::[^:\s]+)?): /.exec(owner) ?? [];
+  const [, qualifiedPkg] = /^(([^:\s]+)(?::[^:\s]+)?): /.exec(owner) ?? [];
   const versions = qualifiedPkg
     ? yield* spawner.string(
         ChildProcess.make("dpkg-query", [
           "-W",
-          "-f=${Version} ${source:Package} ${source:Version}",
+          "-f=${Version}\t${source:Package}\t${source:Version}",
           qualifiedPkg,
         ]),
       )
     : "";
-  const [version, sourcePackage, sourceVersion] = versions.trim().split(" ");
-  if (!pkg || !version || !sourcePackage || !sourceVersion) {
-    return yield* new CliArchiveInputMissingError({
-      inputPath: `dpkg package for ${source}`,
-      hint: "The archive copies libatomic's license and source reference from its Ubuntu package.",
-    });
-  }
-  const header = [
-    `libatomic.so.1 is copied from the Ubuntu package ${pkg} ${version}.`,
-    `Source: https://launchpad.net/ubuntu/+source/${sourcePackage}/${sourceVersion}`,
-  ].join("\n");
+  const osRelease = yield* fs.readFileString("/etc/os-release");
+  const header = yield* Effect.try({
+    try: () => libatomicProvenance(osRelease, owner, versions),
+    catch: (cause) =>
+      new CliArchiveInputMissingError({
+        inputPath: `dpkg package for ${source}`,
+        hint: String(cause),
+      }),
+  });
   // Vendored because CI runner images strip /usr/share/doc.
   const license = yield* fs.readFileString(
     path.join(input.repoRoot, "scripts/licenses/libatomic.LICENSE"),

@@ -68,6 +68,9 @@ export function useAvailableSettingsSearchItems() {
     canManageLocalBackend,
     isWslSettingsRowVisible: wslSettingsRowVisible,
     hasThreadAutoSettlement,
+    hasT3Import: environments.some(
+      (environment) => environment.serverConfig?.environment.capabilities.u4T3Import === true,
+    ),
     managedTunnelActive,
     hasPeerLinkHost,
     hasFastWorktreeCheckoutEnvironment,

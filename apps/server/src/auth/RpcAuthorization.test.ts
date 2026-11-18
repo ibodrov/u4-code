@@ -75,6 +75,21 @@ describe("RPC authorization scopes", () => {
     }
   });
 
+  it("requires maintenance permission for every selective import operation", () => {
+    for (const method of [
+      WS_METHODS.u4T3ImportOpen,
+      WS_METHODS.u4T3ImportGetSession,
+      WS_METHODS.u4T3ImportListThreads,
+      WS_METHODS.u4T3ImportPreview,
+      WS_METHODS.u4T3ImportPreviewPage,
+      WS_METHODS.u4T3ImportStart,
+      WS_METHODS.u4T3ImportGetJob,
+      WS_METHODS.u4T3ImportCancel,
+      WS_METHODS.u4T3ImportClose,
+    ])
+      expect(requiredScopeForRpcMethod(method)).toBe(AuthEnvironmentMaintainScope);
+  });
+
   it("still lets readers load settings the way installed Swift clients ask", () => {
     expect(requiredScopeForRpcMethod("server.getSettings")).toBe(AuthOrchestrationReadScope);
   });

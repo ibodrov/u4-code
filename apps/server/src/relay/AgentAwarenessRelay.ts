@@ -84,8 +84,8 @@ function shouldPublishAgentAwarenessEvent(
     event.type === "thread.created" &&
     typeof event.payload === "object" &&
     event.payload !== null &&
-    "historyOrigin" in event.payload &&
-    event.payload.historyOrigin === "v1_import"
+    (("historyOrigin" in event.payload && event.payload.historyOrigin === "v1_import") ||
+      ("importedFrom" in event.payload && event.payload.importedFrom !== undefined))
   ) {
     return false;
   }

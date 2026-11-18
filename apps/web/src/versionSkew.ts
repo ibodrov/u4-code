@@ -5,6 +5,7 @@ import type {
   ServerSelfUpdateCapability,
 } from "@t3tools/contracts";
 import type { ServerUpdateState } from "@t3tools/client-runtime/state/server";
+import { isU4ReleaseVersion } from "@t3tools/shared/cliRelease";
 import { compareSemverVersions, parseSemver } from "@t3tools/shared/semver";
 import * as Schema from "effect/Schema";
 
@@ -73,7 +74,7 @@ export function resolveVersionMismatch(
   return {
     clientVersion: normalizedClientVersion,
     serverVersion: normalizedServerVersion,
-    hint: "Version mismatch. Try syncing the client and server to the same T3 Code version.",
+    hint: "Version mismatch. Try syncing the client and server to the same U4 Code version.",
   };
 }
 
@@ -98,18 +99,16 @@ export function supportsDesktopAppUpdate(
 export function manualServerUpdateCommand(
   targetVersion: string,
   installation?: ServerInstallation,
-): string {
+): string | null {
+  if (
+    !isU4ReleaseVersion(targetVersion) ||
+    installation?.kind !== "t3-launcher" ||
+    !/^u4(?:\.cmd)?$/i.test(installation.launcher.split(/[\\/]/).at(-1) ?? "")
+  ) {
+    return null;
+  }
   const quote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
-  if (installation?.kind === "npm-global") {
-    return `npm install --global --prefix ${quote(installation.prefix)} t3@${targetVersion}`;
-  }
-  if (installation?.kind === "t3-launcher") {
-    // An inherited T3CODE_HOME would otherwise send the update to a home the launcher is not in.
-    return `${quote(installation.launcher)} update --base-dir ${quote(installation.baseDir)} ${targetVersion}`;
-  }
-  const runner =
-    installation?.kind === "pnpm-dlx" ? "pnpm dlx" : installation?.kind === "bunx" ? "bunx" : "npx";
-  return `${runner} t3@${targetVersion}`;
+  return `${quote(installation.launcher)} update --base-dir ${quote(installation.baseDir)} ${targetVersion}`;
 }
 
 export function buildVersionMismatchDismissalKey(

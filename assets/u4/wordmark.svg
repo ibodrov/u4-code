@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1072" height="640" viewBox="0 0 1072 640">
+  <!--
+    "U4" wordmark for text contexts, for example "U4 Code" in the sidebar.
+    The "4" is the glyph from icon.svg. apps/web/src/components/T3Wordmark.tsx holds a copy of
+    these paths; change both files together.
+  -->
+  <path fill="currentColor" d="M0 0H128V416A96 96 0 0 0 224 512A96 96 0 0 0 320 416V0H448V416A224 224 0 0 1 224 640A224 224 0 0 1 0 416Z"/>
+  <path fill="currentColor" d="M560 0H688V192A64 64 0 0 0 752 256H816A64 64 0 0 0 880 192V0H1008V256H1072V384H1008V640H880V384H752A192 192 0 0 1 560 192Z"/>
+</svg>

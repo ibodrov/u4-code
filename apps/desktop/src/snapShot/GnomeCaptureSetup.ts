@@ -1,5 +1,6 @@
 // @effect-diagnostics nodeBuiltinImport:off -- GNOME's per-user installation is a native adapter boundary.
 // @effect-diagnostics globalTimers:off -- Bound calls into the user's desktop session.
+import { PRODUCT_SLUG } from "@t3tools/shared/productIdentity";
 import * as NodeFSP from "node:fs/promises";
 import * as NodePath from "node:path";
 import { Message, sessionBus, type MessageBus, type MessageLike } from "dbus-next";
@@ -54,7 +55,7 @@ export async function installGnomeCaptureBundle({ bundle, dataHome }: SetupPaths
       await NodeFSP.readFile(NodePath.join(target, "metadata.json"), "utf8"),
     );
     if (installed.version > metadata.version)
-      throw new Error("A newer extension is installed. Update T3 Code instead of replacing it.");
+      throw new Error("A newer extension is installed. Update U4 Code instead of replacing it.");
   }
   const staged = await NodeFSP.mkdtemp(NodePath.join(parent, ".t3-capture-install-"));
   let backup: string | undefined;
@@ -65,7 +66,7 @@ export async function installGnomeCaptureBundle({ bundle, dataHome }: SetupPaths
     }
     await NodeFSP.chmod(staged, 0o755);
     if (existing) {
-      const backupParent = NodePath.join(dataHome, "t3code", "extension-backups");
+      const backupParent = NodePath.join(dataHome, PRODUCT_SLUG, "extension-backups");
       await NodeFSP.mkdir(backupParent, { recursive: true });
       backup = NodePath.join(
         await NodeFSP.mkdtemp(NodePath.join(backupParent, "capture-")),
@@ -181,7 +182,7 @@ export class GnomeCaptureSetup {
         return {
           status: "restart-required",
           message:
-            "Installed. Save your work, sign out of GNOME and sign back in, then return here to enable the extension. Restarting T3 Code alone is not enough.",
+            "Installed. Save your work, sign out of GNOME and sign back in, then return here to enable the extension. Restarting U4 Code alone is not enough.",
         };
       if ((installed?.version ?? info.version?.value ?? 0) < bundled.version)
         return {
@@ -193,7 +194,7 @@ export class GnomeCaptureSetup {
         return {
           status: "extensions-disabled",
           message:
-            "GNOME has disabled user extensions. Turn on Extensions in the GNOME Extensions app, then check again. T3 Code will not enable your other extensions for you.",
+            "GNOME has disabled user extensions. Turn on Extensions in the GNOME Extensions app, then check again. U4 Code will not enable your other extensions for you.",
         };
       if (info.state?.value === 1)
         return {

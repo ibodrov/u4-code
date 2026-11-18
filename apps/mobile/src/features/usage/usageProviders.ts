@@ -24,6 +24,7 @@ export const PROVIDER_LABEL: Record<UsageProviderKind, string> = {
   cursor: "Cursor",
   opencode: "OpenCode",
   antigravity: "Antigravity",
+  "oh-my-pi": "oh-my-pi",
   pi: "Pi",
   muse: "Muse Code",
 };
@@ -37,6 +38,7 @@ export function useProviderColors(): Record<UsageProviderKind, string> {
     cursor: "#8b8b8b",
     opencode: "#5b9bbd",
     antigravity: "#8c7bd1",
+    "oh-my-pi": "#9470d8",
     pi: "#4d9f8a",
     muse: "#0866ff",
   };

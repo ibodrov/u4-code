@@ -1,0 +1,38 @@
+#!/bin/sh
+# Start U4 Code with an environment that cannot point it at official T3 Code.
+# A shell or agent started by T3 Code exports T3CODE_* session variables and
+# AppImage paths from /opt/t3code-bin. U4 must not inherit them.
+set -eu
+
+appimage="${U4CODE_APPIMAGE:-${XDG_DATA_HOME:-$HOME/.local/share}/u4code/U4-Code.AppImage}"
+if [ ! -x "$appimage" ]; then
+  echo "u4code: $appimage is missing or not executable. Run packaging/u4/install.sh." >&2
+  exit 1
+fi
+
+for name in $(env | sed -n 's/^\(T3CODE_[A-Za-z0-9_]*\)=.*/\1/p'); do
+  unset "$name"
+done
+unset ELECTRON_RUN_AS_NODE CHROME_DESKTOP GSETTINGS_SCHEMA_DIR APPDIR APPIMAGE ARGV0 OWD \
+  T3_BOOT_SERVICE_UNIT T3_SERVICE_LAUNCHER_CONTEXT
+
+# Remove list entries that point into another AppImage or the T3 Code package.
+strip_foreign() {
+  printf '%s' "$1" | tr ':' '\n' | grep -v -e '^/opt/t3code' -e '^/tmp/\.mount_' | paste -sd: -
+}
+PATH="$(strip_foreign "$PATH")"
+export PATH
+if [ -n "${XDG_DATA_DIRS:-}" ]; then
+  XDG_DATA_DIRS="$(strip_foreign "$XDG_DATA_DIRS")"
+  export XDG_DATA_DIRS
+fi
+if [ -n "${LD_LIBRARY_PATH:-}" ]; then
+  LD_LIBRARY_PATH="$(strip_foreign "$LD_LIBRARY_PATH")"
+  [ -n "$LD_LIBRARY_PATH" ] && export LD_LIBRARY_PATH || unset LD_LIBRARY_PATH
+fi
+
+# The app writes this path into its URL handler entry, so u4code:// links use this launcher.
+T3CODE_DESKTOP_LAUNCHER_PATH="$(readlink -f "$0")"
+export T3CODE_DESKTOP_LAUNCHER_PATH
+
+exec "$appimage" "$@"

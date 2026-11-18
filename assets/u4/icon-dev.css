@@ -1,0 +1,13 @@
+/* Development variant of icon.svg: dark tile, so a dev build is easy to tell from the installed app. */
+.tile-start {
+  stop-color: #2a2152;
+}
+.tile-end {
+  stop-color: #130f28;
+}
+.four {
+  fill: #8e78ff;
+}
+.u {
+  fill: #dcd5ff;
+}

@@ -1,7 +1,11 @@
+import { contextBoundaryOrdinal } from "./contextBoundary.ts";
+import { requiredImportedHistoryIds } from "./importedHistory.ts";
+import * as CommandPolicy from "./CommandPolicy.ts";
 import { modelSelectionsEqual } from "@t3tools/shared/model";
 import { projectComposerContextForProvider } from "@t3tools/shared/composerContextReferences";
 import {
   CommandId,
+  ContextHandoffId,
   latestProviderTurnForAttempt,
   type OrchestrationV2DomainEvent,
   type OrchestrationV2ContextHandoff,
@@ -970,7 +974,10 @@ export const layer: Layer.Layer<
         // Row identity survives recovery; only accepted native input and delivered history occupy the new session.
         const nativeContextEstimate = Effect.gen(function* () {
           return sameNativeThread
-            ? (yield* projectionStore.getTurnStartHistory(input.threadId)).reduce((sum, item) => {
+            ? (yield* projectionStore.getTurnStartHistory(input.threadId, undefined, {
+                providerThreadId: providerThread.id,
+                itemIds: [...deliveredItemIds],
+              })).reduce((sum, item) => {
                 const acceptedNatively =
                   item.providerThreadId === providerThread.id &&
                   item.runId !== null &&
@@ -1076,8 +1083,50 @@ export const layer: Layer.Layer<
           return retryHandoff;
         },
       );
+      const ownHistoryIndex = yield* Effect.cached(
+        projectionStore.getTurnStartHistoryIndex(input.threadId),
+      );
+      const importedIndex = yield* Effect.cached(
+        Effect.gen(function* () {
+          if (projection.thread.importedFrom === undefined || run.freshContext === true) return [];
+          const ownItems = yield* ownHistoryIndex;
+          const boundary = contextBoundaryOrdinal({
+            runs: projection.runs.filter((source) => source.ordinal < run.ordinal),
+            turnItems: ownItems,
+          });
+          if (boundary > projection.thread.importedFrom.lastRunOrdinal) return [];
+          const fork = projection.thread.forkedFrom;
+          const inheritedItems =
+            boundary === 0 && fork?.type === "run" && projection.thread.lineage.sideChat !== true
+              ? yield* projectionStore.getInheritedHistoryIndex(input.threadId)
+              : [];
+          return requiredImportedHistoryIds({ ...projection, run, ownItems, inheritedItems });
+        }),
+      );
+      const hydrateHistory = Effect.fn("ProviderTurnStartService.hydrateImportedHistory")(
+        function* (index: ReadonlyArray<ProjectionStore.TurnStartHistoryIndexItem>) {
+          const byThread = new Map<ThreadId, string[]>();
+          for (const item of index) {
+            const ids = byThread.get(item.threadId) ?? [];
+            ids.push(item.id);
+            byThread.set(item.threadId, ids);
+          }
+          const hydrated = new Map<string, OrchestrationV2TurnItem>();
+          for (const [thread, itemIds] of byThread)
+            for (const item of yield* projectionStore.getTurnStartHistory(thread, undefined, {
+              itemIds,
+            }))
+              hydrated.set(item.id, item);
+          return index.flatMap((item) => {
+            const value = hydrated.get(item.id);
+            return value ? [value] : [];
+          });
+        },
+      );
+      const importedItems = yield* Effect.cached(Effect.flatMap(importedIndex, hydrateHistory));
       const prepareRecoveryHandoff = Effect.fn("ProviderTurnStartService.prepareRecoveryHandoff")(
         function* () {
+          const required = yield* importedItems;
           const transferId = yield* idAllocator.allocate.contextTransfer({
             sourceThreadId: projection.thread.id,
             targetThreadId: projection.thread.id,
@@ -1095,8 +1144,15 @@ export const layer: Layer.Layer<
             coveredRunOrdinals: { from: 1, to: Math.max(1, run.ordinal - 1) },
             strategy: "full_thread_summary",
             runs: projection.runs,
-            items: (yield* projectionStore.getTurnStartHistory(input.threadId)).filter(
+            items: [
+              ...new Map(
+                [...required, ...(yield* projectionStore.getTurnStartHistory(input.threadId))].map(
+                  (item) => [item.id, item],
+                ),
+              ).values(),
+            ].filter(
               (item) =>
+                required.some((source) => source.id === item.id) ||
                 item.runId === null ||
                 projection.runs.some(
                   (source) => source.id === item.runId && source.ordinal < run.ordinal,
@@ -1118,6 +1174,100 @@ export const layer: Layer.Layer<
           ...effectiveHandoffs.filter((candidate) => candidate.targetRunId === run.id),
         ];
       };
+      const writeHistoryHandoff = Effect.fn("ProviderTurnStartService.writeHistoryHandoff")(
+        function* (
+          handoff: OrchestrationV2ContextHandoff,
+          transferId: NonNullable<OrchestrationV2ContextHandoff["transferId"]>,
+          createdAt: DateTime.Utc,
+          title: string,
+          signal: string,
+        ) {
+          const previousRun = projection.runs.findLast(
+            (candidate) =>
+              candidate.providerThreadId === providerThread.id &&
+              candidate.ordinal < run.ordinal &&
+              candidate.startedAt !== null,
+          );
+          // Stable per run so a retried start reuses the reserved run-start position.
+          const handoffTurnItemId = idAllocator.derive.runSignalTurnItem({
+            runId,
+            signal,
+          });
+          const handoffTurnItem: OrchestrationV2TurnItem = {
+            id: handoffTurnItemId,
+            threadId: projection.thread.id,
+            runId,
+            nodeId: rootNode.id,
+            providerThreadId: providerThread.id,
+            providerTurnId: null,
+            nativeItemRef: null,
+            parentItemId: null,
+            // The summary is delivered ahead of this run's own handoffs and message.
+            ordinal: yield* turnItemPositions.allocate({
+              threadId: projection.thread.id,
+              turnItemId: handoffTurnItemId,
+              runId,
+              runOrdinal: run.ordinal,
+              placement: "run_start",
+            }),
+            status: "completed",
+            title,
+            startedAt: createdAt,
+            completedAt: createdAt,
+            updatedAt: createdAt,
+            type: "handoff",
+            contextHandoffId: handoff.id,
+            fromProviderThreadIds: handoff.fromProviderThreadIds,
+            toProviderThreadId: handoff.toProviderThreadId,
+            fromProviderInstanceIds: [providerThread.providerInstanceId],
+            toProviderInstanceId: run.providerInstanceId,
+            fromModelSelections: previousRun === undefined ? [] : [previousRun.modelSelection],
+            toModel: run.modelSelection.model,
+            strategy: handoff.strategy,
+            summary: handoff.summaryText,
+          };
+          yield* eventSink.write({
+            events: [
+              {
+                id: yield* idAllocator.allocate.event({ threadId: projection.thread.id }),
+                type: "context-handoff.updated",
+                threadId: projection.thread.id,
+                runId: run.id,
+                providerInstanceId: run.providerInstanceId,
+                occurredAt: createdAt,
+                payload: handoff,
+              },
+              {
+                id: yield* idAllocator.allocate.event({ threadId: projection.thread.id }),
+                type: "context-transfer.updated",
+                threadId: projection.thread.id,
+                runId: run.id,
+                providerInstanceId: run.providerInstanceId,
+                occurredAt: createdAt,
+                payload: {
+                  id: transferId,
+                  type: "provider_handoff",
+                  sourceThreadId: projection.thread.id,
+                  targetThreadId: projection.thread.id,
+                  sourcePoint: { threadId: projection.thread.id },
+                  basePoint: null,
+                  sourceProviderInstanceId: providerThread.providerInstanceId,
+                  targetProviderInstanceId: run.providerInstanceId,
+                  targetRunId: run.id,
+                  status: "resolved_portable",
+                  resolution: { strategy: "portable_context", contextHandoffId: handoff.id },
+                  createdBy: "system",
+                  error: null,
+                  createdAt,
+                  updatedAt: createdAt,
+                  consumedAt: null,
+                },
+              },
+            ],
+          });
+          return handoffTurnItem;
+        },
+      );
       let resumedRetryHandoff: ReadonlyArray<OrchestrationV2ContextHandoff> | undefined;
       let resumedHandoffContext: ReturnType<typeof handoffContextForThread> | undefined;
       let portableForkFallback: OrchestrationV2ContextHandoff | undefined;
@@ -1437,95 +1587,152 @@ export const layer: Layer.Layer<
         const { handoff, transferId, createdAt } = yield* recoveryHandoff;
         effectiveHandoffs = withRecoveryHandoff(handoff);
         resumeFellBack = true;
-        const previousRun = projection.runs.findLast(
-          (candidate) =>
-            candidate.providerThreadId === providerThread.id &&
-            candidate.ordinal < run.ordinal &&
-            candidate.startedAt !== null,
+        recoveryTurnItem = yield* writeHistoryHandoff(
+          handoff,
+          transferId,
+          createdAt,
+          "Recovered context",
+          "resume-fallback-handoff",
         );
-        // Stable per run so a retried start reuses the reserved run-start position.
-        const handoffTurnItemId = idAllocator.derive.runSignalTurnItem({
-          runId,
-          signal: "resume-fallback-handoff",
-        });
-        const handoffTurnItem: OrchestrationV2TurnItem = {
-          id: handoffTurnItemId,
-          threadId: projection.thread.id,
-          runId,
-          nodeId: rootNode.id,
-          providerThreadId: providerThread.id,
-          providerTurnId: null,
-          nativeItemRef: null,
-          parentItemId: null,
-          // The summary is delivered ahead of this run's own handoffs and message.
-          ordinal: yield* turnItemPositions.allocate({
-            threadId: projection.thread.id,
-            turnItemId: handoffTurnItemId,
-            runId,
-            runOrdinal: run.ordinal,
-            placement: "run_start",
-          }),
-          status: "completed",
-          title: "Recovered context",
-          startedAt: createdAt,
-          completedAt: createdAt,
-          updatedAt: createdAt,
-          type: "handoff",
-          contextHandoffId: handoff.id,
-          fromProviderThreadIds: handoff.fromProviderThreadIds,
-          toProviderThreadId: handoff.toProviderThreadId,
-          fromProviderInstanceIds: [providerThread.providerInstanceId],
-          toProviderInstanceId: run.providerInstanceId,
-          fromModelSelections: previousRun === undefined ? [] : [previousRun.modelSelection],
-          toModel: run.modelSelection.model,
-          strategy: handoff.strategy,
-          summary: handoff.summaryText,
-        };
-        yield* eventSink.write({
-          events: [
-            {
-              id: yield* idAllocator.allocate.event({ threadId: projection.thread.id }),
-              type: "context-handoff.updated",
-              threadId: projection.thread.id,
-              runId: run.id,
-              providerInstanceId: run.providerInstanceId,
-              occurredAt: createdAt,
-              payload: handoff,
-            },
-            {
-              id: yield* idAllocator.allocate.event({ threadId: projection.thread.id }),
-              type: "context-transfer.updated",
-              threadId: projection.thread.id,
-              runId: run.id,
-              providerInstanceId: run.providerInstanceId,
-              occurredAt: createdAt,
-              payload: {
-                id: transferId,
-                type: "provider_handoff",
-                sourceThreadId: projection.thread.id,
-                targetThreadId: projection.thread.id,
-                sourcePoint: { threadId: projection.thread.id },
-                basePoint: null,
-                sourceProviderInstanceId: providerThread.providerInstanceId,
-                targetProviderInstanceId: run.providerInstanceId,
-                targetRunId: run.id,
-                status: "resolved_portable",
-                resolution: { strategy: "portable_context", contextHandoffId: handoff.id },
-                createdBy: "system",
-                error: null,
-                createdAt,
-                updatedAt: createdAt,
-                consumedAt: null,
-              },
-            },
-          ],
-        });
-        recoveryTurnItem = handoffTurnItem;
         return replacement;
       });
       if (loadedProviderThread === undefined) return;
       if (!(yield* isCurrentAttemptInStatus("starting"))) {
         return;
+      }
+      if (projection.thread.importedFrom !== undefined) {
+        const required = yield* importedIndex;
+        const context = handoffContextForThread(loadedProviderThread);
+        const covered = new Set(context.coveredItemIds);
+        const ownHistory = required.length === 0 ? [] : yield* ownHistoryIndex;
+        for (const item of ownHistory)
+          if (item.runId !== null && context.nativeInputRunIds.has(item.runId))
+            covered.add(item.id);
+        for (const handoff of effectiveHandoffs)
+          if (handoff.status !== "superseded") {
+            for (const message of handoff.history?.messages ?? []) covered.add(message.itemId);
+            for (const id of handoff.history?.omittedItemIds ?? []) covered.add(id);
+          }
+        if (required.some((item) => !covered.has(item.id))) {
+          const allowed = yield* CommandPolicy.CommandPolicyV2.pipe(
+            Effect.flatMap((policy) =>
+              policy.ensureContextHandoff({
+                commandId: CommandId.make(`imported-history:${run.id}`),
+                threadId: input.threadId,
+                providerInstanceId: run.providerInstanceId,
+                capabilities: session.providerSession.capabilities,
+                strategy: "full_thread_summary",
+              }),
+            ),
+            Effect.provide(CommandPolicy.layer),
+            Effect.result,
+          );
+          if (allowed._tag === "Failure") {
+            yield* settleStartFailure({
+              signal: "imported-history-policy-refused",
+              title: "Imported history cannot be delivered",
+              error: allowed.failure,
+            });
+            return;
+          }
+          const superseded = effectiveHandoffs.filter(
+            (handoff) =>
+              handoff.targetRunId === run.id &&
+              handoff.threadId === input.threadId &&
+              (handoff.strategy === "full_thread_summary" ||
+                handoff.strategy === "delta_since_target_last_seen" ||
+                (handoff.strategy === "manual_context" &&
+                  handoff.transferId == null &&
+                  handoff.fromProviderThreadIds.length === 0)) &&
+              (handoff.history?.messages.every((message) => message.threadId === input.threadId) ??
+                true) &&
+              !projection.contextTransfers.some(
+                (transfer) =>
+                  transfer.id === handoff.transferId && transfer.sourceThreadId !== input.threadId,
+              ),
+          );
+          const extras = new Set(
+            superseded.flatMap((handoff) => [
+              ...(handoff.history?.messages.map((message) => message.itemId) ?? []),
+              ...(handoff.history?.omittedItemIds ?? []),
+            ]),
+          );
+          const combined = (yield* hydrateHistory([
+            ...new Map(
+              [...required, ...ownHistory.filter((item) => extras.has(item.id))].map((item) => [
+                item.id,
+                item,
+              ]),
+            ).values(),
+          ])).filter((item) => !context.coveredItemIds.has(item.id));
+          const createdAt = yield* DateTime.now;
+          const transferId = yield* idAllocator.allocate.contextTransfer({
+            sourceThreadId: input.threadId,
+            targetThreadId: input.threadId,
+            type: "imported_history",
+          });
+          const prepared = yield* contextHandoffService.prepareProviderHandoff({
+            threadId: input.threadId,
+            targetRunId: run.id,
+            transferId,
+            fromProviderThreadIds: [providerThread.id],
+            toProviderThreadId: providerThread.id,
+            fromProviderInstanceId: run.providerInstanceId,
+            toProviderInstanceId: run.providerInstanceId,
+            coveredRunOrdinals: { from: 1, to: Math.max(1, run.ordinal - 1) },
+            strategy: "full_thread_summary",
+            runs: projection.runs,
+            items: combined,
+            createdAt,
+          });
+          const handoff = {
+            ...prepared,
+            id: ContextHandoffId.make(
+              idAllocator.derive.runSignalTurnItem({ runId, signal: "imported-history-context" }),
+            ),
+          };
+          const supersededIds = new Set(superseded.map((h) => h.id));
+          const supersessionEvents: OrchestrationV2DomainEvent[] = [];
+          for (const old of superseded)
+            supersessionEvents.push({
+              id: yield* idAllocator.allocate.event({ threadId: input.threadId }),
+              type: "context-handoff.updated",
+              threadId: input.threadId,
+              occurredAt: createdAt,
+              payload: { ...old, status: "superseded", delivery: undefined },
+            });
+          for (const transfer of projection.contextTransfers)
+            if (
+              transfer.resolution &&
+              "contextHandoffId" in transfer.resolution &&
+              supersededIds.has(transfer.resolution.contextHandoffId)
+            )
+              supersessionEvents.push({
+                id: yield* idAllocator.allocate.event({ threadId: input.threadId }),
+                type: "context-transfer.updated",
+                threadId: input.threadId,
+                occurredAt: createdAt,
+                payload: {
+                  ...transfer,
+                  resolution: { ...transfer.resolution, contextHandoffId: handoff.id },
+                  updatedAt: createdAt,
+                },
+              });
+          recoveryTurnItem = yield* eventSink.withProviderBatch(
+            Effect.gen(function* () {
+              yield* eventSink.write({ events: supersessionEvents });
+              return yield* writeHistoryHandoff(
+                handoff,
+                transferId,
+                createdAt,
+                "Imported history",
+                "imported-history",
+              );
+            }),
+          );
+          effectiveHandoffs = effectiveHandoffs.filter((h) => !supersededIds.has(h.id));
+          effectiveHandoffs = withRecoveryHandoff(handoff);
+        }
       }
       const now = yield* DateTime.now;
       const handoffContext = resumedHandoffContext ?? handoffContextForThread(loadedProviderThread);

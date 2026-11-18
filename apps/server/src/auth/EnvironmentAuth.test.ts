@@ -1,3 +1,4 @@
+import { PRODUCT_URL_SCHEME } from "@t3tools/shared/productIdentity";
 import * as NodePlatformCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import {
@@ -720,7 +721,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodePlatformCrypto.layer))(
           origin: "https://box.tail1234.ts.net",
           "x-forwarded-host": "box.tail1234.ts.net",
         });
-        yield* upgrade({ origin: "t3code://app" });
+        yield* upgrade({ origin: `${PRODUCT_URL_SCHEME}://app` });
         yield* upgrade({ origin: "http://localhost:5733" });
         yield* upgrade({});
 

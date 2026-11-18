@@ -37,6 +37,25 @@ export interface SqliteClientConfig {
   readonly readerWorker?: boolean | undefined;
   /** Runs the writer and WAL checkpoints off the event loop. Ignored for in-memory databases. */
   readonly writerWorker?: boolean | undefined;
+  readonly checkpointWorker?: boolean | undefined;
+}
+
+const ImportAttachmentKey = Symbol("nodeSqliteImportAttachment");
+interface RetainedImportAttachment {
+  readonly tryRelease: Effect.Effect<boolean>;
+  readonly disposeAfterClose: Effect.Effect<void>;
+}
+interface ImportAttachmentLifetime {
+  readonly retained: () => boolean;
+  readonly retain: (attachment: RetainedImportAttachment) => boolean;
+  readonly retry: Effect.Effect<boolean>;
+}
+export function importAttachmentLifetime(
+  client: Client.SqlClient,
+): ImportAttachmentLifetime | undefined {
+  return (
+    client as Client.SqlClient & { readonly [ImportAttachmentKey]?: ImportAttachmentLifetime }
+  )[ImportAttachmentKey];
 }
 
 // SqlClient masks transaction acquisition, so readOnly carries the caller's interruption policy.
@@ -359,6 +378,7 @@ const makeWorkerConnection = Effect.fnUntraced(function* (options: {
   readonly role: "reader" | "writer";
   readonly readOnly: boolean;
   readonly onReply?: () => void;
+  readonly onClosed?: () => void;
 }) {
   const label = options.role === "reader" ? "Database reader" : "Database writer";
   const readOnly = options.readOnly;
@@ -370,6 +390,7 @@ const makeWorkerConnection = Effect.fnUntraced(function* (options: {
       }
     | undefined;
   let nextRequestId = 0;
+  let writerExited: Promise<void> | undefined;
   // A replacement writer would lose the pragmas callers set on it, such as foreign_keys.
   let writerStopped: string | undefined;
 
@@ -384,6 +405,8 @@ const makeWorkerConnection = Effect.fnUntraced(function* (options: {
         prepareCacheSize: 200,
       },
     });
+    if (options.role === "writer")
+      writerExited = new Promise<void>((resolve) => worker.once("exit", () => resolve()));
     let announce: (startup: WorkerStartup) => void = () => {};
     const started = new Promise<WorkerStartup>((resolve) => {
       announce = resolve;
@@ -512,7 +535,13 @@ const makeWorkerConnection = Effect.fnUntraced(function* (options: {
   yield* Effect.addFinalizer(() =>
     Effect.promise(async () => {
       const open = current;
-      if (open === undefined) return;
+      if (open === undefined) {
+        if (options.role === "writer") {
+          await writerExited;
+          options.onClosed?.();
+        }
+        return;
+      }
       if (options.role === "writer") {
         await new Promise<void>((resolve) => {
           open.worker.once("exit", () => resolve());
@@ -522,6 +551,7 @@ const makeWorkerConnection = Effect.fnUntraced(function* (options: {
         });
       }
       await open.worker.terminate();
+      options.onClosed?.();
     }),
   );
 
@@ -755,6 +785,36 @@ const make = Effect.fn("makeWithDatabase")(function* (
 ): Effect.fn.Return<Client.SqlClient, SqlError, Scope.Scope | Reactivity.Reactivity> {
   yield* checkNodeSqliteCompat();
 
+  let writerClosed = false;
+  let retainedImport: RetainedImportAttachment | undefined;
+  const importCleanupLock = yield* Semaphore.make(1);
+  // Registered before connections: retained paths and leases dispose only after the owning writer closes.
+  yield* Effect.addFinalizer(() =>
+    Effect.suspend(() =>
+      writerClosed && retainedImport ? retainedImport.disposeAfterClose : Effect.void,
+    ),
+  );
+  const importLifetime: ImportAttachmentLifetime = {
+    retained: () => retainedImport !== undefined,
+    retain: (attachment) => {
+      if (retainedImport !== undefined) return false;
+      retainedImport = attachment;
+      return true;
+    },
+    retry: importCleanupLock.withPermit(
+      Effect.suspend(() =>
+        retainedImport
+          ? retainedImport.tryRelease.pipe(
+              Effect.tap((released) =>
+                Effect.sync(() => {
+                  if (released) retainedImport = undefined;
+                }),
+              ),
+            )
+          : Effect.succeed(true),
+      ),
+    ),
+  };
   const compiler = Statement.makeCompilerSqlite();
   const isFileDatabase = options.filename !== ":memory:" && options.filename !== "";
 
@@ -774,7 +834,10 @@ const make = Effect.fn("makeWithDatabase")(function* (
     yield* Scope.addFinalizer(
       scope,
       Effect.try({
-        try: () => db.close(),
+        try: () => {
+          db.close();
+          writerClosed = true;
+        },
         catch: (cause) =>
           new SqlError({
             reason: classifyError(cause, "Failed to close database", "close"),
@@ -900,12 +963,15 @@ const make = Effect.fn("makeWithDatabase")(function* (
         role: "writer",
         readOnly: options.readonly ?? false,
         onReply: () => checkpointAfterWrite?.(),
+        onClosed: () => {
+          writerClosed = true;
+        },
       })
     : Effect.succeed(yield* makeConnection);
   // Opening now fails the layer for a file that is not a database, not its first query.
   const opened = yield* writerConnection;
   // Started after the writer, so it stops first and the writer's close can checkpoint.
-  if (writerWorker && options.readonly !== true) {
+  if (writerWorker && options.readonly !== true && options.checkpointWorker !== false) {
     checkpointAfterWrite = yield* startCheckpointWorker(options.filename);
     if (checkpointAfterWrite !== undefined) {
       yield* opened.executeUnprepared(
@@ -915,6 +981,34 @@ const make = Effect.fn("makeWithDatabase")(function* (
       );
     }
   }
+  let cleanupPending = false;
+  const noTransaction = (error: SqlError) => {
+    const cause = error.reason.cause;
+    return (
+      Predicate.hasProperty(cause, "message") &&
+      typeof cause.message === "string" &&
+      /no transaction is active/i.test(cause.message)
+    );
+  };
+  const rollbackWriter = opened.executeUnprepared("ROLLBACK", [], undefined).pipe(
+    Effect.asVoid,
+    Effect.catchIf(noTransaction, () => Effect.void),
+    Effect.onExit((exit) =>
+      Effect.sync(() => {
+        cleanupPending = Exit.isFailure(exit);
+      }),
+    ),
+  );
+  // Effect releases its transaction permit even when cleanup fails; quarantine that writer first.
+  const writerConnectionGuarded: Connection = {
+    ...opened,
+    executeUnprepared(statement, params, transform) {
+      return /^\s*ROLLBACK\s*;?\s*$/i.test(statement)
+        ? Effect.as(rollbackWriter, [])
+        : opened.executeUnprepared(statement, params, transform);
+    },
+  };
+  const ensureWriterClean = Effect.suspend(() => (cleanupPending ? rollbackWriter : Effect.void));
   const readerPool = { unavailable: false };
   const readers =
     options.readerWorker && isFileDatabase
@@ -937,11 +1031,11 @@ const make = Effect.fn("makeWithDatabase")(function* (
     readonly lock: Semaphore.Semaphore;
     readonly connection: Connection;
   }
-  const writer = Effect.map(writerConnection, (connection): Target => ({
+  const writer = Effect.succeed<Target>({
     name: "writer",
     lock: semaphore,
-    connection,
-  }));
+    connection: writerConnectionGuarded,
+  });
   let activeWriter: ConnectionOwner | undefined;
   // Callers must run route uninterruptibly and pass `claimed` a finalizer that runs `release` once.
   // Waits use the caller's `restore`, not readOnly's, which may have been captured outside a mask.
@@ -1014,7 +1108,7 @@ const make = Effect.fn("makeWithDatabase")(function* (
     target: Target,
     use: (connection: Connection) => Effect.Effect<A, E, R>,
     start: bigint,
-  ): Effect.Effect<A, E, R> =>
+  ): Effect.Effect<A, E | SqlError, R> =>
     Effect.withFiber((fiber) => {
       const clock = fiber.getRef(Clock.Clock);
       const ownerAtWaitStart = target.name === "writer" ? activeWriter : undefined;
@@ -1027,7 +1121,9 @@ const make = Effect.fn("makeWithDatabase")(function* (
         ) {
           annotateAcquired(fiber, acquired(target, clock, start), ownerAtWaitStart);
         }
-        return use(target.connection);
+        return target.name === "writer"
+          ? Effect.flatMap(ensureWriterClean, () => use(target.connection))
+          : use(target.connection);
       });
       const useOwnedConnection =
         target.name === "writer"
@@ -1069,7 +1165,10 @@ const make = Effect.fn("makeWithDatabase")(function* (
         });
         return Effect.as(
           // A scheduler yield after taking the permit must not precede its release finalizer.
-          Effect.provideService(acquire, Scheduler.PreventSchedulerYield, true),
+          Effect.andThen(
+            Effect.provideService(acquire, Scheduler.PreventSchedulerYield, true),
+            target.name === "writer" ? ensureWriterClean : Effect.void,
+          ),
           target.connection,
         );
       });
@@ -1082,6 +1181,13 @@ const make = Effect.fn("makeWithDatabase")(function* (
     borrower,
     compiler,
     transactionAcquirer,
+    onCommitFailure: (connection) =>
+      connection === writerConnectionGuarded
+        ? rollbackWriter
+        : connection.executeUnprepared("ROLLBACK", [], undefined).pipe(
+            Effect.asVoid,
+            Effect.catchIf(noTransaction, () => Effect.void),
+          ),
     // BEGIN IMMEDIATE avoids read-then-write SQLITE_BUSY_SNAPSHOT, which busy_timeout cannot resolve.
     beginTransaction: options.readonly === true ? "BEGIN" : "BEGIN IMMEDIATE",
     spanAttributes: [
@@ -1091,6 +1197,7 @@ const make = Effect.fn("makeWithDatabase")(function* (
   });
   const withTransaction = client.withTransaction;
   return Object.assign(client, {
+    [ImportAttachmentKey]: importLifetime,
     withTransaction: <A, E, R>(effect: Effect.Effect<A, E, R>) =>
       Effect.uninterruptibleMask((restore) => {
         // SqlClient masks setup; acquisition must preserve the caller's interruptibility.

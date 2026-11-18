@@ -463,7 +463,30 @@ const OrchestrationV2LastTitleRegeneration = Schema.Struct({
   completedAt: Schema.DateTimeUtc,
 });
 
+export const OrchestrationV2T3ImportProvenance = Schema.Struct({
+  app: Schema.Literal("t3"),
+  environmentId: EnvironmentId,
+  threadId: ThreadId,
+  unitRootThreadId: ThreadId,
+  generation: PositiveInt,
+  importedAt: Schema.DateTimeUtc,
+  sourceDigest: TrimmedNonEmptyString,
+  unitDigest: TrimmedNonEmptyString,
+  dependencyKey: TrimmedNonEmptyString,
+  dependencies: Schema.Array(
+    Schema.Struct({
+      unitRootThreadId: ThreadId,
+      generation: PositiveInt,
+      unitDigest: TrimmedNonEmptyString,
+    }),
+  ).check(Schema.isMaxLength(12)),
+  importedRowCounts: Schema.Record(Schema.String, NonNegativeInt),
+  ownedTransferIds: Schema.optional(Schema.Array(ContextTransferId)),
+  lastRunOrdinal: NonNegativeInt,
+});
+
 export const OrchestrationV2AppThread = Schema.Struct({
+  importedFrom: Schema.optional(OrchestrationV2T3ImportProvenance),
   ...OrchestrationV2CreationFields,
   id: ThreadId,
   projectId: ProjectId,
@@ -2418,6 +2441,12 @@ export type OrchestrationV2StoredEvent = typeof OrchestrationV2StoredEvent.Type;
 
 export const OrchestrationV2AppThreadJson = OrchestrationV2AppThread.mapFields((fields) => ({
   ...fields,
+  importedFrom: Schema.optional(
+    OrchestrationV2T3ImportProvenance.mapFields((fields) => ({
+      ...fields,
+      importedAt: Schema.DateTimeUtcFromString,
+    })),
+  ),
   createdAt: Schema.DateTimeUtcFromString,
   updatedAt: Schema.DateTimeUtcFromString,
   archivedAt: Schema.NullOr(Schema.DateTimeUtcFromString),

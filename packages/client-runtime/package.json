@@ -574,6 +574,10 @@
     "./provider-instance-ids": {
       "types": "./src/providerInstanceIds.ts",
       "default": "./src/providerInstanceIds.ts"
+    },
+    "./state/u4T3Import": {
+      "types": "./src/state/u4T3Import.ts",
+      "default": "./src/state/u4T3Import.ts"
     }
   },
   "scripts": {
@@ -596,6 +600,7 @@
     "@t3tools/shared": "workspace:*",
     "@t3tools/source-control-core": "workspace:*",
     "@t3tools/source-control-definitions": "workspace:*",
+    "@u4code/provider-oh-my-pi": "workspace:*",
     "effect": "catalog:",
     "jszip": "3.10.1",
     "remark-gfm": "catalog:",

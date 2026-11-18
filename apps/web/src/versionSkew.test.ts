@@ -17,30 +17,41 @@ import {
 } from "./versionSkew";
 
 const MISMATCH_HINT =
-  "Version mismatch. Try syncing the client and server to the same T3 Code version.";
+  "Version mismatch. Try syncing the client and server to the same U4 Code version.";
 
 describe("versionSkew", () => {
-  it("updates only the proven install and safely quotes its paths", () => {
-    expect(manualServerUpdateCommand("0.0.45", { kind: "npm-global", prefix: "/opt/node" })).toBe(
-      "npm install --global --prefix '/opt/node' t3@0.0.45",
-    );
+  it("offers only U4 launcher updates and safely quotes their paths", () => {
+    for (const installation of [
+      { kind: "npm-global", prefix: "/opt/node" },
+      { kind: "pnpm-dlx" },
+      { kind: "bunx" },
+      { kind: "npx" },
+      { kind: "t3-launcher", launcher: "t3", baseDir: "/home/u/.t3" },
+    ] as const) {
+      expect(manualServerUpdateCommand("0.1.10-u4.8", installation)).toBeNull();
+    }
+    expect(manualServerUpdateCommand("0.1.10-u4.8")).toBeNull();
     expect(
-      manualServerUpdateCommand("0.0.45", { kind: "npm-global", prefix: "/opt/maria's node" }),
-    ).toBe("npm install --global --prefix '/opt/maria'\\''s node' t3@0.0.45");
-    expect(
-      manualServerUpdateCommand("0.0.45", {
+      manualServerUpdateCommand("0.1.10", {
         kind: "t3-launcher",
-        launcher: "t3",
-        baseDir: "/home/u/.t3",
+        launcher: "u4",
+        baseDir: "/home/u/.u4",
       }),
-    ).toBe("'t3' update --base-dir '/home/u/.t3' 0.0.45");
+    ).toBeNull();
     expect(
-      manualServerUpdateCommand("0.0.45", {
+      manualServerUpdateCommand("0.1.10-u4.8", {
         kind: "t3-launcher",
-        launcher: "/opt/maria's bin/t3",
-        baseDir: "/data/t3 home",
+        launcher: "u4",
+        baseDir: "/home/u/.u4",
       }),
-    ).toBe("'/opt/maria'\\''s bin/t3' update --base-dir '/data/t3 home' 0.0.45");
+    ).toBe("'u4' update --base-dir '/home/u/.u4' 0.1.10-u4.8");
+    expect(
+      manualServerUpdateCommand("0.1.10-u4.8", {
+        kind: "t3-launcher",
+        launcher: "/opt/maria's bin/u4",
+        baseDir: "/data/u4 home",
+      }),
+    ).toBe("'/opt/maria'\\''s bin/u4' update --base-dir '/data/u4 home' 0.1.10-u4.8");
   });
   beforeEach(() => {
     branding.APP_VERSION = "0.0.34";

@@ -290,13 +290,33 @@ describe("ConnectionCatalogDocument", () => {
   it("decodes a document written before the disabled list existed", () => {
     const decoded = decodeCatalogDocument({
       schemaVersion: 1,
-      targets: [],
-      profiles: [],
-      credentials: [],
+      targets: [BEARER_TARGET],
+      profiles: [
+        {
+          ...BEARER_PROFILE,
+          kubernetes: {
+            managerEnvironmentId: "manager-1",
+            profileId: "local",
+            context: "kind",
+            namespace: "u4",
+            workspaceId: "ws-1234abcd",
+            pvcUid: "12345678-1234-1234-1234-123456789abc",
+          },
+          bootstrapExpiresAt: 1,
+        },
+      ],
+      credentials: [{ connectionId: BEARER_TARGET.connectionId, credential: BEARER_CREDENTIAL }],
       remoteDpopTokens: [],
     });
 
     expect(decoded.disabledEnvironmentIds).toEqual([]);
+    expect(decoded.targets).toEqual([BEARER_TARGET]);
+    expect(decoded.credentials).toEqual([
+      { connectionId: BEARER_TARGET.connectionId, credential: BEARER_CREDENTIAL },
+    ]);
+    expect(decoded.profiles[0]).not.toHaveProperty("kubernetes");
+    expect(decoded.profiles[0]).not.toHaveProperty("bootstrapExpiresAt");
+    expect(decoded.profiles).toEqual([BEARER_PROFILE]);
   });
 
   it("switches a saved environment off and back on without touching its records", () => {

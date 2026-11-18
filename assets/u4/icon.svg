@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!--
+    U4 Code app icon. Original artwork for this fork; it does not use the T3 Code mark.
+
+    The glyph is a "4" with an open top. Its upper part is a complete "U", drawn in white
+    over the stem and crossbar that finish the "4".
+
+    All glyph coordinates are multiples of 64, so every edge is on a pixel boundary at 16 px
+    and 32 px. Keep that grid when you edit the paths.
+
+    generate.sh renders this file. The classes let icon-dev.css recolor the development variant.
+  -->
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="1" y2="1">
+      <stop class="tile-start" offset="0" stop-color="#8266FF"/>
+      <stop class="tile-end" offset="1" stop-color="#4A2BD0"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" rx="228" fill="url(#tile)"/>
+  <path class="four" fill="#C9BEFF" d="M576 384H704V448H768V576H704V832H576V576H512V448H576Z"/>
+  <path class="u" fill="#FFFFFF" d="M256 192H384V384A64 64 0 0 0 448 448H512A64 64 0 0 0 576 384V192H704V384A192 192 0 0 1 512 576H448A192 192 0 0 1 256 384Z"/>
+</svg>

@@ -23,6 +23,7 @@ import { resolveTaggedSourceVersion } from "../../scripts/lib/tagged-source-vers
 import { thirdPartyLicensesPlugin } from "../../scripts/lib/third-party-licenses";
 import { tailwindPlugins } from "./vite/tailwind";
 import { warmBundledDevPlugin } from "./vite/warmBundledDev";
+import { PRODUCT_BASE_NAME, UPSTREAM_PRODUCT_NAME } from "@t3tools/shared/productIdentity";
 import { formatAppDisplayName, resolveWebAppStageLabel } from "./src/branding.logic";
 
 const repoEnv = loadRepoEnv();
@@ -269,6 +270,7 @@ function bundledDevStableNamesPlugin(): Plugin {
 
 // Stamps index.html's title with the name branding.ts resolves once the app
 // loads, so a tab opens on the right channel instead of flashing another's.
+// Also fills the boot splash's upstream credit from productIdentity.
 // Desktop swaps in its injected branding from an inline script in index.html.
 function bootstrapTitlePlugin(): Plugin {
   let development = false;
@@ -283,8 +285,13 @@ function bootstrapTitlePlugin(): Plugin {
         hostedAppChannel: configuredHostedAppChannel,
         development,
       });
-      const title = formatAppDisplayName({ baseName: "T3 Code", stageLabel });
-      return html.replace(/<title>[^<]*<\/title>/, `<title>${title}</title>`);
+      const title = formatAppDisplayName({ baseName: PRODUCT_BASE_NAME, stageLabel });
+      return html
+        .replace(/<title>[^<]*<\/title>/, `<title>${title}</title>`)
+        .replace(
+          '<p id="boot-shell-credit"></p>',
+          `<p id="boot-shell-credit">Based on ${UPSTREAM_PRODUCT_NAME}</p>`,
+        );
     },
   };
 }

@@ -3,6 +3,7 @@
 import * as NodeChildProcess from "node:child_process";
 
 import * as HostProcess from "@t3tools/shared/HostProcess";
+import { PRODUCT_BASE_NAME, PRODUCT_CLI_COMMAND } from "@t3tools/shared/productIdentity";
 import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -52,18 +53,39 @@ export const findOwnedLauncher = Effect.fn("cli.uninstall.find_launcher")(functi
   const platform = yield* HostProcess.Platform;
   if (input.launchedAs === undefined) return undefined;
   if (platform === "win32") {
-    const shimPath = yield* findWindowsShim(input.launchedAs);
-    if (shimPath === undefined) return undefined;
-    const contents = yield* fs.readFileString(shimPath).pipe(Effect.option);
-    const target = Option.isSome(contents) ? generatedWindowsShimTarget(contents.value) : undefined;
-    return target !== undefined && isVersionExecutable(path, input.versionsDir, target)
-      ? shimPath
+    const environment = yield* HostProcess.Environment;
+    const directories = [
+      environment.T3CODE_INSTALL_BIN_DIR ?? "",
+      ...(environment.PATH ?? environment.Path ?? "").split(";"),
+    ].filter((entry) => entry.trim().length > 0);
+    for (const directory of directories) {
+      const shimPath = path.join(directory, `${PRODUCT_CLI_COMMAND}.cmd`);
+      const target = yield* fs.readFileString(shimPath).pipe(
+        Effect.map(generatedWindowsShimTarget),
+        Effect.orElseSucceed(() => undefined),
+      );
+      if (
+        target !== undefined &&
+        path.resolve(target).toLowerCase() === path.resolve(input.launchedAs).toLowerCase() &&
+        isVersionExecutable(path, input.versionsDir, target)
+      ) {
+        return shimPath;
+      }
+    }
+    const legacyShim = yield* findWindowsShim(input.launchedAs, "t3.cmd");
+    if (legacyShim === undefined) return undefined;
+    const legacyTarget = yield* fs.readFileString(legacyShim).pipe(
+      Effect.map(generatedWindowsShimTarget),
+      Effect.orElseSucceed(() => undefined),
+    );
+    return legacyTarget !== undefined && isVersionExecutable(path, input.versionsDir, legacyTarget)
+      ? legacyShim
       : undefined;
   }
   return yield* findPosixLauncher({ launchedAs: input.launchedAs, versionsDir: input.versionsDir });
 });
 
-/** Whether `launcher` is a link, unedited `t3` script, or unedited `t3.cmd` into this home's runtime/versions. */
+/** Whether `launcher` is a link, unedited launcher script, or unedited `.cmd` into this home's runtime/versions. */
 const ownsLauncher = Effect.fn("cli.uninstall.owns_launcher")(function* (
   launcher: string,
   versionsDir: string,
@@ -75,7 +97,7 @@ const ownsLauncher = Effect.fn("cli.uninstall.owns_launcher")(function* (
     .realPath(versionsDir)
     .pipe(Effect.orElseSucceed(() => versionsDir));
   // The link's own text keeps a pruned (dangling) target; the real path sees through a
-  // symlinked T3 home.
+  // symlinked product home.
   const targets =
     platform === "win32"
       ? [
@@ -101,7 +123,7 @@ const ownsLauncher = Effect.fn("cli.uninstall.owns_launcher")(function* (
 });
 
 /**
- * Launchers recorded in `runtime/launchers` by the install scripts and `t3 install` that still
+ * Launchers recorded in `runtime/launchers` by the install scripts and the install command that still
  * point into this home's runtime/versions. npx can run a different version than the installed
  * one, so the launcher this process started from does not always name them.
  */
@@ -186,7 +208,7 @@ export const uninstallCommand = Command.make("uninstall", {
   ),
 }).pipe(
   Command.withDescription(
-    "Remove t3 from this machine: the background service, the launcher, and every downloaded version. Your projects and threads are kept.",
+    `Remove ${PRODUCT_BASE_NAME} from this machine: the background service, the launcher, and every downloaded version. Your projects and threads are kept.`,
   ),
   Command.withHandler((flags) =>
     Effect.gen(function* () {
@@ -203,7 +225,7 @@ const logOtherHomeService = (plan: UninstallPlan) =>
   plan.otherHomeService === undefined
     ? Effect.void
     : Console.log(
-        `The T3 Code service serves ${plan.otherHomeService}, so it was not removed. Pass \`${BootService.formatBootServiceBaseDirOption(plan.otherHomeService)}\` to remove it.`,
+        `The ${PRODUCT_BASE_NAME} service serves ${plan.otherHomeService}, so it was not removed. Pass \`${BootService.formatBootServiceBaseDirOption(plan.otherHomeService)}\` to remove it.`,
       );
 
 const runUninstall = Effect.fn("cli.uninstall.run")(function* (input: {
@@ -217,10 +239,12 @@ const runUninstall = Effect.fn("cli.uninstall.run")(function* (input: {
   const plan = yield* planUninstall({ baseDir: input.baseDir });
 
   if (!plan.service && plan.launchers.length === 0 && plan.runtimeDir === undefined) {
-    yield* Console.log(`Nothing to remove: t3 is not installed for ${input.baseDir}.`);
+    yield* Console.log(
+      `Nothing to remove: ${PRODUCT_CLI_COMMAND} is not installed for ${input.baseDir}.`,
+    );
     if (!(yield* HostProcess.IsExecutable)) {
       yield* Console.log(
-        "  This t3 runs from a Node script, so it was installed by npm or built from source. Remove it the same way (`npm uninstall -g t3`, or delete the checkout).",
+        `  This ${PRODUCT_BASE_NAME} CLI runs from a Node script. Remove the source checkout or launcher you used to start it.`,
       );
     }
     yield* logOtherHomeService(plan);
@@ -245,7 +269,7 @@ const runUninstall = Effect.fn("cli.uninstall.run")(function* (input: {
       });
     }
     const confirmed = yield* Prompt.run(
-      Prompt.Confirm({ message: "Remove t3 from this machine?", initial: false }),
+      Prompt.Confirm({ message: `Remove ${PRODUCT_BASE_NAME} from this machine?`, initial: false }),
     ).pipe(Effect.catchTags({ QuitError: () => Effect.succeed(false) }));
     if (!confirmed) {
       yield* Console.log("Left as is.");
@@ -260,7 +284,7 @@ const runUninstall = Effect.fn("cli.uninstall.run")(function* (input: {
   for (const launcher of plan.launchers) {
     // The prompt can wait a long time; never delete a file that replaced the launcher meanwhile.
     if (!(yield* ownsLauncher(launcher, plan.versionsDir))) {
-      yield* Console.log(`Left ${launcher}: it no longer runs this t3.`);
+      yield* Console.log(`Left ${launcher}: it no longer runs this ${PRODUCT_CLI_COMMAND}.`);
       continue;
     }
     yield* fs
@@ -284,7 +308,7 @@ const runUninstall = Effect.fn("cli.uninstall.run")(function* (input: {
             reason: `Could not schedule removal of ${runtimeDir}. Delete it yourself once this window is closed.`,
           }),
       });
-      yield* Console.log(`${runtimeDir} will be removed once t3 exits.`);
+      yield* Console.log(`${runtimeDir} will be removed once ${PRODUCT_CLI_COMMAND} exits.`);
     } else {
       yield* fs
         .remove(plan.runtimeDir, { recursive: true, force: true })
@@ -297,6 +321,8 @@ const runUninstall = Effect.fn("cli.uninstall.run")(function* (input: {
     }
   }
   yield* Console.log("");
-  yield* Console.log("t3 is uninstalled. Thanks for trying T3 Code.");
+  yield* Console.log(
+    `${PRODUCT_CLI_COMMAND} is uninstalled. Thanks for trying ${PRODUCT_BASE_NAME}.`,
+  );
   yield* logOtherHomeService(plan);
 });

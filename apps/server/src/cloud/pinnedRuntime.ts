@@ -18,6 +18,8 @@ import {
   cliArchivePlatformKey,
   cliArchiveTarCommand,
   cliReleaseAssetUrl,
+  isU4ReleaseVersion,
+  resolveU4ReleaseBaseUrl,
   type CliArchivePlatformKey,
   parseChecksums,
 } from "@t3tools/shared/cliRelease";
@@ -208,9 +210,14 @@ const installFromArchive = Effect.fn("cloud.pinned_runtime.install_archive")(fun
   const httpClient = input.httpClient;
   input.onProgress?.({ stage: "download", received: 0, total: undefined });
   const { fileName, expected } = yield* publishedArchive(input, platformKey);
+  const archiveUrl = cliReleaseAssetUrl(input.version, fileName, input.releaseBaseUrl);
+  if (archiveUrl === undefined)
+    return yield* new PinnedRuntimeInstallError({
+      step: "selecting an approved U4 release source",
+    });
   const archive = yield* fetchReleaseAsset(
     httpClient,
-    cliReleaseAssetUrl(input.version, fileName, input.releaseBaseUrl),
+    archiveUrl,
     "downloading the t3 release archive",
     input.onProgress,
   );
@@ -264,12 +271,26 @@ const publishedArchive = Effect.fn("cloud.pinned_runtime.published_archive")(fun
   input: PinnedRuntimeInstallInput,
   platformKey: CliArchivePlatformKey,
 ) {
+  if (resolveU4ReleaseBaseUrl(input.releaseBaseUrl) === undefined) {
+    return yield* new PinnedRuntimeInstallError({
+      step: "selecting an approved U4 release source; configure U4CODE_RELEASE_BASE_URL or an update policy source",
+    });
+  }
   const fileName = cliArchiveFileName(input.version, platformKey);
+  const checksumsUrl = cliReleaseAssetUrl(
+    input.version,
+    CLI_RELEASE_CHECKSUMS_FILE,
+    input.releaseBaseUrl,
+  );
+  if (checksumsUrl === undefined)
+    return yield* new PinnedRuntimeInstallError({
+      step: "selecting an approved U4 release source",
+    });
   const checksums = parseChecksums(
     new TextDecoder().decode(
       yield* fetchReleaseAsset(
         input.httpClient,
-        cliReleaseAssetUrl(input.version, CLI_RELEASE_CHECKSUMS_FILE, input.releaseBaseUrl),
+        checksumsUrl,
         "downloading the t3 release checksums",
       ),
     ),
@@ -296,6 +317,9 @@ export const isUnpublishedRelease = (error: unknown): error is PinnedRuntimeInst
 const installPinnedRuntime = Effect.fn("cloud.pinned_runtime.ensure_installed")(function* (
   input: PinnedRuntimeInstallInput,
 ) {
+  if (!isU4ReleaseVersion(input.version)) {
+    return yield* new PinnedRuntimeInstallError({ step: "selecting an exact U4 release version" });
+  }
   const { fs } = input;
   const paths = pinnedRuntimePaths(input.path, input.baseDir, input.version, input.platform);
   const [versionDirExists, entryExists, sentinel] = yield* Effect.all([
@@ -322,6 +346,11 @@ const installPinnedRuntime = Effect.fn("cloud.pinned_runtime.ensure_installed")(
     input.onProgress?.({ stage: "cached" });
     yield* input.validate(paths);
     return paths;
+  }
+  if (resolveU4ReleaseBaseUrl(input.releaseBaseUrl) === undefined) {
+    return yield* new PinnedRuntimeInstallError({
+      step: "selecting an approved U4 release source; configure U4CODE_RELEASE_BASE_URL or an update policy source",
+    });
   }
   if (versionDirExists) {
     yield* fs.remove(paths.versionDir, { recursive: true, force: true }).pipe(

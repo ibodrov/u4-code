@@ -8,12 +8,14 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
+import * as Schema from "effect/Schema";
 
 import * as ConnectionResolver from "./resolver.ts";
 import * as ClientCapabilities from "../platform/capabilities.ts";
 import * as RemoteEnvironmentAuthorization from "../authorization/service.ts";
 import {
   BearerConnectionCredential,
+  BearerConnectionProfile,
   type ConnectionCatalogEntry,
   SshConnectionProfile,
   type ConnectionCredential,
@@ -22,6 +24,7 @@ import {
 import * as ConnectionCredentialStore from "./credentialStore.ts";
 import {
   ConnectionTransientError,
+  BearerConnectionTarget,
   PrimaryConnectionTarget,
   SshConnectionTarget,
   type ConnectionTarget,
@@ -35,6 +38,7 @@ import {
 } from "./pullRequestRoutingPermissions.ts";
 
 const ENVIRONMENT_ID = EnvironmentId.make("environment-1");
+const decodeBearerProfile = Schema.decodeEffect(Schema.fromJsonString(BearerConnectionProfile));
 const ENDPOINT = {
   httpBaseUrl: "https://environment.example.test",
   wsBaseUrl: "wss://environment.example.test",
@@ -169,6 +173,62 @@ const makeDependencies = Effect.fn("TestConnectionResolver.makeDependencies")((o
 });
 
 describe("ConnectionResolver", () => {
+  it.effect(
+    "prepares a saved bearer route with obsolete extra metadata through ordinary authorization",
+    () =>
+      Effect.gen(function* () {
+        const target = new BearerConnectionTarget({
+          environmentId: ENVIRONMENT_ID,
+          label: "Bootstrap",
+          connectionId: "bootstrap",
+        });
+        const profile = yield* decodeBearerProfile(
+          JSON.stringify({
+            _tag: "BearerConnectionProfile",
+            connectionId: "bootstrap",
+            environmentId: ENVIRONMENT_ID,
+            label: "Bootstrap",
+            httpBaseUrl: "http://127.0.0.1:4000",
+            wsBaseUrl: "ws://127.0.0.1:4000",
+            bootstrapExpiresAt: 0,
+            kubernetes: {
+              managerEnvironmentId: "manager-1",
+              profileId: "local",
+              context: "kind",
+              namespace: "u4",
+              workspaceId: "ws-1234abcd",
+              pvcUid: "12345678-1234-1234-1234-123456789abc",
+            },
+          }),
+        );
+        const authorized = yield* Ref.make<ReadonlyArray<string>>([]);
+        const layer = yield* makeDependencies({
+          credentials: [["bootstrap", new BearerConnectionCredential({ token: "fixture-token" })]],
+          authorizeBearer: (input) =>
+            Ref.update(authorized, (tokens) => [...tokens, input.bearerToken]).pipe(
+              Effect.as({
+                environmentId: input.expectedEnvironmentId,
+                label: "Authorized bearer environment",
+                httpBaseUrl: input.httpBaseUrl,
+                socketUrl: "ws://127.0.0.1:4000/ws?wsTicket=bearer",
+                httpAuthorization: { _tag: "Bearer" as const, token: input.bearerToken },
+              }),
+            ),
+        });
+        yield* Effect.gen(function* () {
+          const resolver = yield* ConnectionResolver.ConnectionResolver;
+          const prepared = yield* resolver.prepare(catalogEntry(target, Option.some(profile)));
+          expect(prepared).toMatchObject({
+            environmentId: ENVIRONMENT_ID,
+            httpBaseUrl: profile.httpBaseUrl,
+            socketUrl: expect.stringContaining("wsTicket=bearer"),
+            httpAuthorization: { _tag: "Bearer", token: "fixture-token" },
+            target,
+          });
+          expect(yield* Ref.get(authorized)).toEqual(["fixture-token"]);
+        }).pipe(Effect.provide(layer));
+      }),
+  );
   it.effect("blocks an old host during discovery before opening orchestration RPC", () =>
     Effect.gen(function* () {
       const layerBroker = yield* makeDependencies({ descriptorProtocolVersion: null });
@@ -183,7 +243,7 @@ describe("ConnectionResolver", () => {
       const error = yield* Effect.flip(broker.prepare(catalogEntry(target)));
 
       expect(error).toMatchObject({ reason: "unsupported" });
-      expect(error.message).toContain("Update T3 Code on Compatible environment");
+      expect(error.message).toContain("Update U4 Code on Compatible environment");
     }),
   );
 

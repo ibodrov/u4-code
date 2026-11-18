@@ -21,7 +21,7 @@ import { listen, resolveStartupRecoveryOffer } from "./DesktopStartupRecovery.ts
 
 const updateState = (patch: Partial<DesktopUpdateState>): DesktopUpdateState => ({
   ...createInitialDesktopUpdateState(
-    "0.1.3",
+    "0.1.3-u4.8",
     { hostArch: "arm64", appArch: "arm64", runningUnderArm64Translation: false },
     "latest",
   ),
@@ -30,34 +30,51 @@ const updateState = (patch: Partial<DesktopUpdateState>): DesktopUpdateState => 
 });
 
 describe("resolveStartupRecoveryOffer", () => {
+  it("keeps official versions out of update and reinstall recovery", () => {
+    expect(
+      resolveStartupRecoveryOffer(
+        updateState({ status: "available", availableVersion: "99.0.0" }),
+        "0.1.2",
+      ),
+    ).toEqual({ _tag: "Releases" });
+    expect(
+      resolveStartupRecoveryOffer(
+        updateState({ enabled: false, status: "disabled", downloadedVersion: "0.1.4-u4.8" }),
+        null,
+      ),
+    ).toEqual({ _tag: "Releases" });
+  });
+
   it("offers a newer version before going back", () => {
     expect(
       resolveStartupRecoveryOffer(
-        updateState({ status: "available", availableVersion: "0.1.4" }),
-        "0.1.2",
+        updateState({ status: "available", availableVersion: "0.1.4-u4.8" }),
+        "0.1.2-u4.8",
       ),
-    ).toEqual({ _tag: "Update", version: "0.1.4" });
+    ).toEqual({ _tag: "Update", version: "0.1.4-u4.8" });
   });
 
   it("offers a retained download after a later check fails", () => {
     expect(
       resolveStartupRecoveryOffer(
-        updateState({ status: "error", errorContext: "check", downloadedVersion: "0.1.4" }),
+        updateState({ status: "error", errorContext: "check", downloadedVersion: "0.1.4-u4.8" }),
         null,
       ),
-    ).toEqual({ _tag: "Update", version: "0.1.4" });
+    ).toEqual({ _tag: "Update", version: "0.1.4-u4.8" });
   });
 
   it("waits for the update check before offering to go back", () => {
-    expect(resolveStartupRecoveryOffer(updateState({ status: "checking" }), "0.1.2")).toEqual({
+    expect(resolveStartupRecoveryOffer(updateState({ status: "checking" }), "0.1.2-u4.8")).toEqual({
       _tag: "Checking",
     });
   });
 
   it("offers the last version that started when no update exists", () => {
-    expect(resolveStartupRecoveryOffer(updateState({ status: "up-to-date" }), "0.1.2")).toEqual({
+    expect(
+      resolveStartupRecoveryOffer(updateState({ status: "up-to-date" }), "0.1.2-u4.8"),
+    ).toEqual({
       _tag: "Reinstall",
-      version: "0.1.2",
+      version: "0.1.2-u4.8",
     });
   });
 
@@ -66,29 +83,29 @@ describe("resolveStartupRecoveryOffer", () => {
       resolveStartupRecoveryOffer(
         updateState({
           status: "downloaded",
-          downloadedVersion: "0.1.4",
-          notAppliedVersion: "0.1.4",
+          downloadedVersion: "0.1.4-u4.8",
+          notAppliedVersion: "0.1.4-u4.8",
         }),
-        "0.1.2",
+        "0.1.2-u4.8",
       ),
-    ).toEqual({ _tag: "Reinstall", version: "0.1.2" });
+    ).toEqual({ _tag: "Reinstall", version: "0.1.2-u4.8" });
   });
 
   it("blames the managed policy unless a newer version can read it", () => {
     expect(
       resolveStartupRecoveryOffer(
-        updateState({ status: "available", availableVersion: "0.1.4" }),
-        "0.1.2",
+        updateState({ status: "available", availableVersion: "0.1.4-u4.8" }),
+        "0.1.2-u4.8",
         true,
       ),
-    ).toEqual({ _tag: "Update", version: "0.1.4" });
+    ).toEqual({ _tag: "Update", version: "0.1.4-u4.8" });
     expect(
-      resolveStartupRecoveryOffer(updateState({ status: "up-to-date" }), "0.1.2", true),
+      resolveStartupRecoveryOffer(updateState({ status: "up-to-date" }), "0.1.2-u4.8", true),
     ).toEqual({ _tag: "ManagedPolicy" });
   });
 
   it("falls back to the releases page when this version never started", () => {
-    expect(resolveStartupRecoveryOffer(updateState({ status: "disabled" }), "0.1.3")).toEqual({
+    expect(resolveStartupRecoveryOffer(updateState({ status: "disabled" }), "0.1.3-u4.8")).toEqual({
       _tag: "Releases",
     });
     expect(resolveStartupRecoveryOffer(updateState({ status: "up-to-date" }), null)).toEqual({
@@ -140,11 +157,11 @@ it.effect.each([
         Effect.provide(
           Layer.mergeAll(
             FileSystem.layerNoop({
-              readFileString: () => Effect.succeed("0.1.2"),
+              readFileString: () => Effect.succeed("0.1.2-u4.8"),
               writeFileString: () => Deferred.succeed(remembered, undefined).pipe(Effect.asVoid),
             }),
             Layer.succeed(DesktopEnvironment.DesktopEnvironment, {
-              appVersion: "0.1.3",
+              appVersion: "0.1.3-u4.8",
               stateDir: "/task/state",
               logDir: "/task/logs",
               path: { join: (...parts: string[]) => parts.join("/") },

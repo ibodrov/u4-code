@@ -22,6 +22,7 @@ import * as Electron from "electron";
 
 import * as NetService from "@t3tools/shared/Net";
 import * as HostProcess from "@t3tools/shared/HostProcess";
+import { CLI_RELEASE_BASE_URL_ENV, resolveU4ReleaseBaseUrl } from "@t3tools/shared/cliRelease";
 import type { RemoteT3RunnerOptions } from "@t3tools/ssh/tunnel";
 import serverPackageJson from "../../server/package.json" with { type: "json" };
 
@@ -111,6 +112,7 @@ const layerDesktopEnvironment = Layer.unwrap(
 
 const resolveDesktopSshCliRunner = (
   environment: DesktopEnvironment.DesktopEnvironment["Service"],
+  releaseBaseUrl: string | undefined,
 ): RemoteT3RunnerOptions => {
   const devRemoteEntryPath = Option.getOrUndefined(environment.devRemoteT3ServerEntryPath);
   if (environment.isDevelopment && devRemoteEntryPath !== undefined) {
@@ -119,14 +121,28 @@ const resolveDesktopSshCliRunner = (
       nodeEngineRange: serverPackageJson.engines.node,
     };
   }
-  return { archiveVersion: environment.appVersion };
+  return {
+    archiveVersion: environment.appVersion,
+    ...(releaseBaseUrl === undefined ? {} : { releaseBaseUrl }),
+  };
 };
 
 const layerDesktopSshEnvironment = Layer.unwrap(
   Effect.gen(function* () {
     const environment = yield* DesktopEnvironment.DesktopEnvironment;
+    const policy = yield* DesktopManagedPolicy.DesktopManagedPolicy;
     return DesktopSshEnvironment.layer({
-      resolveCliRunner: Effect.succeed(resolveDesktopSshCliRunner(environment)),
+      resolveCliRunner: Effect.gen(function* () {
+        const found = yield* policy.read.pipe(Effect.option);
+        const hostEnvironment = yield* HostProcess.Environment;
+        const policySource = Option.isSome(found)
+          ? found.value?.document.limits?.updates?.feedUrl
+          : "";
+        return resolveDesktopSshCliRunner(
+          environment,
+          resolveU4ReleaseBaseUrl(policySource, hostEnvironment[CLI_RELEASE_BASE_URL_ENV]),
+        );
+      }),
       resolveLauncherId: yield* Effect.cached(
         DesktopSshEnvironment.readOrCreateLauncherId(
           environment.path.join(environment.stateDir, "ssh-launcher-id"),
@@ -171,6 +187,7 @@ const layerDesktopFoundation = Layer.mergeAll(
 
 const layerDesktopSsh = layerDesktopSshEnvironment.pipe(
   Layer.provideMerge(DesktopSshPasswordPrompts.layer()),
+  Layer.provide(DesktopManagedPolicy.layer),
 );
 
 const layerDesktopServerExposure = DesktopServerExposure.layer.pipe(

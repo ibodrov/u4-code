@@ -1,3 +1,4 @@
+import { PRODUCT_DEV_URL_SCHEME, PRODUCT_URL_SCHEME } from "@t3tools/shared/productIdentity";
 import { ORCHESTRATION_PROTOCOL_HEADER } from "@t3tools/contracts";
 
 export const browserApiCorsAllowedMethods = ["GET", "POST", "OPTIONS"] as const;
@@ -10,7 +11,10 @@ export const browserApiCorsAllowedHeaders = [
   ORCHESTRATION_PROTOCOL_HEADER,
 ] as const;
 
-export const DESKTOP_RENDERER_ORIGINS = ["t3code://app", "t3code-dev://app"] as const;
+export const DESKTOP_RENDERER_ORIGINS = [
+  `${PRODUCT_URL_SCHEME}://app`,
+  `${PRODUCT_DEV_URL_SCHEME}://app`,
+] as const;
 
 /** MCP refuses every browser Origin with 403, so the browser CORS layer must not answer for it. */
 export const MCP_HTTP_PATH = "/mcp";

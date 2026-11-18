@@ -34,6 +34,7 @@ import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import { EventId } from "@t3tools/contracts";
 import * as Orchestrator from "./Orchestrator.ts";
 import * as ThreadPullRequestService from "./ThreadPullRequestService.ts";
+import { importedCreationFixture } from "../u4/t3Import/testkit/ImportedCreationFixture.ts";
 
 describe("ThreadPullRequestServiceV2 project guard", () => {
   it("rejects a pull-request result when the project root changes before dispatch", () => {
@@ -51,6 +52,55 @@ describe("ThreadPullRequestServiceV2 project guard", () => {
 });
 
 describe("ThreadPullRequestServiceV2 reads", () => {
+  it.effect("does not refresh a thread for an importer-produced creation event", () =>
+    Effect.gen(function* () {
+      const processed = yield* Deferred.make<void>();
+      const targeted: ThreadId[] = [];
+      const event = importedCreationFixture("thread:source");
+      const dependencies = Layer.mergeAll(
+        Layer.mock(Orchestrator.OrchestratorV2)({
+          streamDomainEvents: Stream.make(event).pipe(
+            Stream.concat(
+              Stream.fromEffect(Deferred.succeed(processed, undefined)).pipe(Stream.drain),
+            ),
+          ),
+          getPullRequestSnapshot: (options) =>
+            Effect.sync(() => {
+              if (options?.threadId) targeted.push(options.threadId);
+              return {
+                schemaVersion: 2 as const,
+                snapshotSequence: 0,
+                threads: [],
+                archivedThreads: [],
+              };
+            }),
+        }),
+        Layer.mock(ProjectStore.ProjectStoreV2)({ listShells: () => Effect.succeed([]) }),
+        Layer.mock(GitManager.GitManager)({}),
+        Layer.mock(PullRequestService.PullRequestService)({
+          notifyLinkedThreadsChanged: Effect.void,
+        }),
+        Layer.mock(RepositoryIdentityResolver.RepositoryIdentityResolver)({}),
+        Layer.mock(BackgroundPolicy.BackgroundPolicy)({
+          shouldRunOpportunisticWork: Effect.succeed(false),
+        }),
+        Layer.succeed(ServerActivation.ServerActivation, undefined),
+        Layer.succeed(
+          SecureRandom.SecureRandom,
+          SecureRandom.make((size) => new Uint8Array(size).fill(1)),
+        ),
+        FileSystem.layerNoop({}),
+        Path.layer,
+      );
+      yield* Effect.gen(function* () {
+        const service = yield* ThreadPullRequestService.make;
+        yield* service.start();
+        yield* Deferred.await(processed);
+        yield* service.drain;
+        expect(targeted).toEqual([]);
+      }).pipe(Effect.provide(dependencies));
+    }),
+  );
   const NOW = DateTime.makeUnsafe("2026-09-20T00:00:00.000Z");
   const threadShell = (id: string): OrchestrationV2ThreadShell => {
     const threadId = ThreadId.make(id);

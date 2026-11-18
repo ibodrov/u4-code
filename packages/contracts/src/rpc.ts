@@ -1,3 +1,4 @@
+import { T3ImportError, T3ImportInputs, T3ImportOutputs } from "./u4T3Import.ts";
 import {
   OrchestrationV2SearchThreadError,
   OrchestrationV2SearchThreadInput,
@@ -415,6 +416,16 @@ import { VcsError } from "./vcs.ts";
 import { Project, ProjectMutation, ProjectMutationError } from "./project.ts";
 
 export const WS_METHODS = {
+  u4T3ImportOpen: "u4T3Import.open",
+  u4T3ImportGetSession: "u4T3Import.getSession",
+  u4T3ImportListThreads: "u4T3Import.listThreads",
+  u4T3ImportPreview: "u4T3Import.preview",
+  u4T3ImportPreviewPage: "u4T3Import.previewPage",
+  u4T3ImportStart: "u4T3Import.start",
+  u4T3ImportGetJob: "u4T3Import.getJob",
+  u4T3ImportCancel: "u4T3Import.cancel",
+  u4T3ImportClose: "u4T3Import.close",
+
   projectsListEntries: "projects.listEntries",
   projectsListIgnoredFiles: "projects.listIgnoredFiles",
   projectsReadFile: "projects.readFile",
@@ -2139,6 +2150,51 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerRemoveKeybindingRpc,
   WsServerRunStorageCleanupRpc,
   WsServerGetStorageCleanupReportRpc,
+  Rpc.make(WS_METHODS.u4T3ImportOpen, {
+    payload: T3ImportInputs.open,
+    success: T3ImportOutputs.open,
+    error: T3ImportError,
+  }),
+  Rpc.make(WS_METHODS.u4T3ImportGetSession, {
+    payload: T3ImportInputs.getSession,
+    success: T3ImportOutputs.getSession,
+    error: T3ImportError,
+  }),
+  Rpc.make(WS_METHODS.u4T3ImportListThreads, {
+    payload: T3ImportInputs.listThreads,
+    success: T3ImportOutputs.listThreads,
+    error: T3ImportError,
+  }),
+  Rpc.make(WS_METHODS.u4T3ImportPreview, {
+    payload: T3ImportInputs.preview,
+    success: T3ImportOutputs.preview,
+    error: T3ImportError,
+  }),
+  Rpc.make(WS_METHODS.u4T3ImportPreviewPage, {
+    payload: T3ImportInputs.previewPage,
+    success: T3ImportOutputs.previewPage,
+    error: T3ImportError,
+  }),
+  Rpc.make(WS_METHODS.u4T3ImportStart, {
+    payload: T3ImportInputs.start,
+    success: T3ImportOutputs.start,
+    error: T3ImportError,
+  }),
+  Rpc.make(WS_METHODS.u4T3ImportGetJob, {
+    payload: T3ImportInputs.getJob,
+    success: T3ImportOutputs.getJob,
+    error: T3ImportError,
+  }),
+  Rpc.make(WS_METHODS.u4T3ImportCancel, {
+    payload: T3ImportInputs.cancel,
+    success: T3ImportOutputs.cancel,
+    error: T3ImportError,
+  }),
+  Rpc.make(WS_METHODS.u4T3ImportClose, {
+    payload: T3ImportInputs.close,
+    success: T3ImportOutputs.close,
+    error: T3ImportError,
+  }),
   WsServerGetDatabaseStorageRpc,
   WsServerGetSettingsRpc,
   WsServerReclaimDatabaseSpaceRpc,

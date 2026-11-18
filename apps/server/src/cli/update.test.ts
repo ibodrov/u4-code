@@ -51,27 +51,35 @@ const unrelatedLsof = ProcessRunner.ProcessRunner.of({
 
 afterEach(() => vi.restoreAllMocks());
 
-it.effect("authenticates each release page until the requested channel is found", () =>
-  Effect.gen(function* () {
-    const pages: string[] = [];
-    const httpClient = HttpClient.make((request) => {
-      const url = new URL(request.url);
-      assert.equal(url.origin, "https://api.github.com");
-      assert.equal(url.pathname, "/repos/pingdotgg/t3code/releases");
-      assert.equal(request.headers.accept, "application/vnd.github+json");
-      assert.equal(request.headers.authorization, "Bearer gh-token");
-      const page = url.searchParams.get("page") ?? "";
-      pages.push(page);
-      const tag_name = page === "1" ? "v1.2.4-preview.20260101.1" : "v1.2.3";
-      return Effect.succeed(HttpClientResponse.fromWeb(request, Response.json([{ tag_name }])));
-    });
-    const version = yield* resolveNewestVersion("stable").pipe(
-      Effect.provideService(HostProcess.Environment, { GH_TOKEN: "gh-token" }),
-      Effect.provideService(HttpClient.HttpClient, httpClient),
-    );
-    assert.equal(version, "1.2.3");
-    assert.deepStrictEqual(pages, ["1", "2"]);
-  }),
+it.effect(
+  "requires an explicit U4 release source instead of consulting the public release index",
+  () =>
+    Effect.gen(function* () {
+      const requests: string[] = [];
+      const client = HttpClient.make((request) => {
+        requests.push(request.url);
+        return Effect.succeed(
+          HttpClientResponse.fromWeb(request, new Response("version: 1.4.0-u4.8\n")),
+        );
+      });
+      const missing = yield* resolveNewestVersion("stable").pipe(
+        Effect.flip,
+        Effect.provideService(HostProcess.Environment, {}),
+        Effect.provideService(HttpClient.HttpClient, client),
+      );
+      assert.include(missing.reason, "approved U4 release source");
+      assert.deepEqual(requests, []);
+      const found = yield* resolveNewestVersion("stable").pipe(
+        Effect.provideService(HostProcess.Environment, {
+          U4CODE_RELEASE_BASE_URL: "https://env.example/releases",
+        }),
+        Effect.provideService(HttpClient.HttpClient, client),
+        Effect.provideService(HostProcess.Platform, "linux"),
+        Effect.provideService(HostProcess.Architecture, "x64"),
+      );
+      assert.equal(found, "1.4.0-u4.8");
+      assert.deepEqual(requests, ["https://env.example/releases/latest-linux.yml"]);
+    }),
 );
 
 it.effect("reads the newest version from the update feed file a mirror publishes", () =>
@@ -102,12 +110,12 @@ it.effect("reads the newest version from the update feed file a mirror publishes
       );
 
     assert.equal(
-      yield* resolve("stable", "darwin", "arm64", "version: 1.4.0\nfiles: []\n"),
-      "1.4.0",
+      yield* resolve("stable", "darwin", "arm64", "version: 1.4.0-u4.8\nfiles: []\n"),
+      "1.4.0-u4.8",
     );
     assert.equal(
       yield* resolve("nightly", "linux", "arm64", "version: '1.5.0-nightly.20261101.2'\n"),
-      "1.5.0-nightly.20261101.2",
+      "error: Could not read nightly-linux-arm64.yml from Example Corp's update mirror.",
     );
     assert.deepStrictEqual(requested, [
       "https://updates.example.com/t3code/latest-mac.yml?token=abc",
@@ -152,6 +160,15 @@ it.layer(NodeServices.layer)("t3 update under a managed policy", (it) => {
         ),
       ),
     );
+
+  it.effect.each(["1.2.3", "latest", "../other", "1.2.3-u4.8/other"])(
+    "rejects non-U4 update %s before reading or modifying service state",
+    (requestedVersion) =>
+      Effect.gen(function* () {
+        const error = yield* runWithPolicy({ mode: "auto" }, { requestedVersion });
+        assert.include(error.message, "not an exact U4 release version");
+      }),
+  );
 
   it.effect("refuses to update when updates are off", () =>
     Effect.gen(function* () {
@@ -541,7 +558,7 @@ it.layer(NodeServices.layer)("t3 update with a background service", (it) => {
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
       const baseDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-update-" });
-      const version = packageJson.version;
+      const version = `${packageJson.version.split(".")[0]}.99.0-u4.8`;
       const runtime = pinnedRuntimePaths(path, baseDir, version, "linux");
       yield* fs.makeDirectory(runtime.versionDir, { recursive: true });
       yield* fs.writeFileString(runtime.entryPath, "");
@@ -599,7 +616,7 @@ it.layer(NodeServices.layer)("t3 update with a background service", (it) => {
 
       assert.include(
         output,
-        `Background service still running the version before ${version}. Run \`t3 service restart\` when you are ready to switch it to ${version}.`,
+        `Background service still running the version before ${version}. Run \`u4 service restart\` when you are ready to switch it to ${version}.`,
       );
     }).pipe(
       Effect.provideService(HostProcess.Platform, "linux"),

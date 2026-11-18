@@ -1,7 +1,7 @@
 // @effect-diagnostics nodeBuiltinImport:off - The ownership lock is a native SQLite handle held for the server's lifetime.
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
-import * as NodeSqlite from "node:sqlite";
+import { openExclusiveSqliteLock } from "./persistence/exclusiveSqliteLock.ts";
 
 import { SERVER_EXIT_CODE_STATE_DIR_OWNED } from "@t3tools/contracts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
@@ -48,7 +48,7 @@ export class ServerAlreadyRunningError extends Schema.TaggedError<ServerAlreadyR
   override readonly [Runtime.errorExitCode] = SERVER_EXIT_CODE_STATE_DIR_OWNED;
 
   override get message(): string {
-    return `A T3 Code server already owns ${this.stateDir}. Stop that server, or use a separate T3 home and pair with it, then retry. No server was stopped. server-owner.sqlite is the ownership lock; do not delete it while a server is running.`;
+    return `A U4 Code server already owns ${this.stateDir}. Stop that server, or use a separate U4 home and pair with it, then retry. No server was stopped. server-owner.sqlite is the ownership lock; do not delete it while a server is running.`;
   }
 }
 
@@ -59,7 +59,7 @@ export class OlderBootServiceError extends Schema.TaggedError<OlderBootServiceEr
   override readonly [Runtime.errorExitCode] = SERVER_EXIT_CODE_STATE_DIR_OWNED;
 
   override get message(): string {
-    return `A T3 Code background service set up for ${this.baseDir} may still run a release without the ownership lock. On that machine, try \`t3 update\` and let it restart (or run \`t3 service restart\` if the update is already installed). If the older launcher cannot update, run \`t3 service uninstall\`, then reinstall with \`t3 service install\` from a current CLI. You can also leave the service uninstalled. Pass \`--base-dir ${this.baseDir}\` to each command, and use \`npx t3@latest\` if \`t3\` is not installed or is outdated. Then retry. No server was stopped.`;
+    return `A U4 Code background service set up for ${this.baseDir} may still run a release without the ownership lock. On that machine, try \`u4 update\` and let it restart (or run \`u4 service restart\` if the update is already installed). If the older launcher cannot update, run \`u4 service uninstall\`, then reinstall with \`u4 service install\` from a current CLI. You can also leave the service uninstalled. Pass \`--base-dir ${this.baseDir}\` to each command, and use \`npx t3@latest\` if \`u4\` is not installed or is outdated. Then retry. No server was stopped.`;
   }
 }
 
@@ -181,25 +181,8 @@ const openOwnershipLock = (stateDir: string) =>
     try: () => {
       const lockPath = ownershipLockPath(stateDir);
       NodeFS.mkdirSync(stateDir, { recursive: true });
-      let before = NodeFS.statSync(lockPath, { bigint: true, throwIfNoEntry: false });
-      if (before === undefined) {
-        NodeFS.closeSync(NodeFS.openSync(lockPath, "a", 0o644));
-        before = NodeFS.statSync(lockPath, { bigint: true });
-      }
-      const db = new NodeSqlite.DatabaseSync(lockPath);
-      try {
-        // An idle service launcher probes this lock for a moment; wait out that probe.
-        db.exec("PRAGMA busy_timeout = 250; BEGIN EXCLUSIVE;");
-        const identity = NodeFS.statSync(lockPath, { bigint: true });
-        return {
-          db,
-          identity,
-          replacedDuringAcquire: before.dev !== identity.dev || before.ino !== identity.ino,
-        };
-      } catch (cause) {
-        db.close();
-        throw cause;
-      }
+      // An idle service launcher probes this lock briefly; wait out that probe.
+      return openExclusiveSqliteLock(lockPath, 250);
     },
     catch: (cause) =>
       isSqliteBusy(cause)

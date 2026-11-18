@@ -43,6 +43,7 @@ import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import * as ThreadManagementService from "../orchestration-v2/ThreadManagementService.ts";
 import * as ProjectService from "../project/ProjectService.ts";
 import * as AgentAwarenessRelay from "./AgentAwarenessRelay.ts";
+import { importedCreationFixture } from "../u4/t3Import/testkit/ImportedCreationFixture.ts";
 
 const THREAD_ID = ThreadId.make("relay-thread");
 const SECOND_THREAD_ID = ThreadId.make("relay-thread-2");
@@ -334,6 +335,23 @@ const makeTestRelay = Effect.fnUntraced(function* (
 });
 
 describe("AgentAwarenessRelay", () => {
+  it.effect("does not read or publish an importer-produced creation event", () =>
+    Effect.gen(function* () {
+      const processed = yield* Deferred.make<void>();
+      const { relay, shellReads, publications } = yield* makeTestRelay({
+        domainEvents: Stream.make(importedCreationFixture("thread:source")).pipe(
+          Stream.concat(
+            Stream.fromEffect(Deferred.succeed(processed, undefined)).pipe(Stream.drain),
+          ),
+        ),
+      });
+      yield* relay.start();
+      yield* Deferred.await(processed);
+      yield* relay.drain;
+      assert.deepStrictEqual(shellReads, []);
+      assert.deepStrictEqual(publications, []);
+    }),
+  );
   it.effect("publishes the parent as needing approval while its subagent waits", () =>
     Effect.gen(function* () {
       const shells = yield* Ref.make(

@@ -29,7 +29,7 @@ import {
 } from "./pinnedRuntime.ts";
 import { SERVICE_LAUNCHER_PROTOCOL } from "./serviceProtocol.ts";
 
-const version = "1.2.3";
+const version = "1.2.3-u4.8";
 const archiveName = `t3-${version}-linux-x64.tar.gz`;
 const archiveBytes = new TextEncoder().encode("not really a tarball");
 const archiveHex = (bytes: Uint8Array) =>
@@ -72,6 +72,63 @@ const extractingRunner = (fs: FileSystem.FileSystem, path: Path.Path, commands: 
   });
 
 it.layer(NodeServices.layer)("ensurePinnedRuntimeInstalled", (it) => {
+  it.effect.each(["cached", "missing", "official-version", "private-failure"] as const)(
+    "enforces U4 source and version before download: %s",
+    (mode) =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const baseDir = yield* fs.makeTempDirectoryScoped({ prefix: "u4-runtime-source-" });
+        const target = mode === "official-version" ? "1.2.3" : version;
+        const cached = pinnedRuntimePaths(path, baseDir, target, "linux");
+        if (mode === "cached" || mode === "official-version") {
+          yield* fs.makeDirectory(cached.versionDir, { recursive: true });
+          yield* fs.writeFileString(cached.entryPath, "cached");
+          yield* fs.writeFileString(cached.sentinelPath, `${target}\n`);
+        }
+        const requests: string[] = [];
+        let validated = 0;
+        const input = {
+          baseDir,
+          version: target,
+          fs,
+          path,
+          platform: "linux" as const,
+          arch: "x64",
+          runner: extractingRunner(fs, path),
+          releaseBaseUrl:
+            mode === "private-failure" ? "https://private.example/releases" : undefined,
+          httpClient: HttpClient.make((request) => {
+            requests.push(request.url);
+            return Effect.succeed(
+              HttpClientResponse.fromWeb(request, new Response("", { status: 401 })),
+            );
+          }),
+          validate: () =>
+            Effect.sync(() => {
+              validated++;
+            }),
+        };
+        if (mode === "cached") {
+          assert.deepEqual(yield* ensurePinnedRuntimeInstalled(input), cached);
+          assert.equal(validated, 1);
+        } else {
+          const error = yield* ensurePinnedRuntimeInstalled(input).pipe(Effect.flip);
+          assert.instanceOf(error, PinnedRuntimeInstallError);
+          assert.equal(validated, 0);
+          if (mode === "missing") assert.include(error.step, "approved U4 release source");
+          if (mode === "official-version")
+            assert.equal(yield* fs.readFileString(cached.entryPath), "cached");
+        }
+        assert.deepEqual(
+          requests,
+          mode === "private-failure"
+            ? [`https://private.example/releases/${version}/SHA256SUMS`]
+            : [],
+        );
+      }),
+  );
+
   it.effect("installs the verified release archive as the runtime executable", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
@@ -98,8 +155,8 @@ it.layer(NodeServices.layer)("ensurePinnedRuntimeInstalled", (it) => {
       assert.equal(paths.entryPath, path.join(paths.versionDir, "t3"));
       assert.deepEqual(pinnedRuntimeCommand(paths), { command: paths.entryPath, args: [] });
       assert.deepEqual(requests, [
-        `https://releases.example/download/v${version}/SHA256SUMS`,
-        `https://releases.example/download/v${version}/${archiveName}`,
+        `https://releases.example/download/${version}/SHA256SUMS`,
+        `https://releases.example/download/${version}/${archiveName}`,
       ]);
       assert.deepEqual(commands, ["tar"]);
       assert.equal(yield* fs.readFileString(paths.sentinelPath), `${version}\n`);
@@ -136,6 +193,7 @@ it.layer(NodeServices.layer)("ensurePinnedRuntimeInstalled", (it) => {
       );
       const firstChunk = yield* Deferred.make<void>();
       const install = yield* ensurePinnedRuntimeInstalled({
+        releaseBaseUrl: "https://updates.example/releases",
         baseDir,
         version,
         fs,
@@ -203,6 +261,7 @@ it.layer(NodeServices.layer)("ensurePinnedRuntimeInstalled", (it) => {
       const requests: string[] = [];
       const gatewayTimeoutServed = yield* Deferred.make<void>();
       const install = yield* ensurePinnedRuntimeInstalled({
+        releaseBaseUrl: "https://updates.example/releases",
         baseDir,
         version,
         fs,
@@ -245,6 +304,7 @@ it.layer(NodeServices.layer)("ensurePinnedRuntimeInstalled", (it) => {
       let archiveRequests = 0;
       const archiveRequested = yield* Deferred.make<void>();
       const install = yield* ensurePinnedRuntimeInstalled({
+        releaseBaseUrl: "https://updates.example/releases",
         baseDir,
         version,
         fs,
@@ -292,6 +352,7 @@ it.layer(NodeServices.layer)("ensurePinnedRuntimeInstalled", (it) => {
       const baseDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-pinned-offline-" });
       let requests = 0;
       const error = yield* ensurePinnedRuntimeInstalled({
+        releaseBaseUrl: "https://updates.example/releases",
         baseDir,
         version,
         fs,
@@ -321,6 +382,7 @@ it.layer(NodeServices.layer)("ensurePinnedRuntimeInstalled", (it) => {
       const baseDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-pinned-archive-bad-" });
       const commands: string[] = [];
       const error = yield* ensurePinnedRuntimeInstalled({
+        releaseBaseUrl: "https://updates.example/releases",
         baseDir,
         version,
         fs,
@@ -347,6 +409,7 @@ it.layer(NodeServices.layer)("ensurePinnedRuntimeInstalled", (it) => {
       let validatedDirectory = "";
 
       const installed = yield* ensurePinnedRuntimeInstalled({
+        releaseBaseUrl: "https://updates.example/releases",
         baseDir,
         version,
         fs,
@@ -378,6 +441,7 @@ it.layer(NodeServices.layer)("ensurePinnedRuntimeInstalled", (it) => {
       const finalPaths = pinnedRuntimePaths(path, baseDir, version, "linux");
 
       yield* ensurePinnedRuntimeInstalled({
+        releaseBaseUrl: "https://updates.example/releases",
         baseDir,
         version,
         fs,
@@ -410,6 +474,7 @@ it.layer(NodeServices.layer)("ensurePinnedRuntimeInstalled", (it) => {
       yield* fs.writeFileString(path.join(finalPaths.versionDir, "partial"), "incomplete\n");
 
       yield* ensurePinnedRuntimeInstalled({
+        releaseBaseUrl: "https://updates.example/releases",
         baseDir,
         version,
         fs,
@@ -457,7 +522,7 @@ it.layer(NodeServices.layer)("ensurePinnedRuntimeInstalled", (it) => {
       assert.equal((yield* install(yield* validChecksums, requests)).entryPath, cached.entryPath);
       // Listed, so the cached runtime is used without downloading it again.
       assert.deepEqual(requests, [
-        `https://updates.example.com/t3code/v${version}/SHA256SUMS?token=abc`,
+        `https://updates.example.com/t3code/${version}/SHA256SUMS?token=abc`,
       ]);
     }),
   );
@@ -475,6 +540,7 @@ it.layer(NodeServices.layer)("ensurePinnedRuntimeInstalled", (it) => {
       let validations = 0;
       const requests: string[] = [];
       yield* ensurePinnedRuntimeInstalled({
+        releaseBaseUrl: "https://updates.example/releases",
         baseDir,
         version,
         fs,
