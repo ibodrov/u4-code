@@ -9,6 +9,8 @@ import zipfile
 
 ANDROID = "{http://schemas.android.com/apk/res/android}"
 PACKAGE = "ca.ibodrov.u4code"
+HERMES_MAGIC = bytes.fromhex("c61fbc03c103191f")
+ANDROID_BUNDLE = "assets/index.android.bundle"
 
 
 def need(condition, message):
@@ -21,6 +23,16 @@ def manifest_check(xml):
     need(root.attrib.get("package") == PACKAGE, "APK package mismatch")
     application = root.find("application")
     need(application is not None, "missing application")
+    for flag in ("debuggable", "testOnly", "isSplitRequired"):
+        need(application.attrib.get(ANDROID + flag) in (None, "false", "0"),
+             "standalone production APK must not set " + flag)
+    for key in ("split", "configForSplit", ANDROID + "splitTypes", ANDROID + "requiredSplitTypes"):
+        need(not root.attrib.get(key), "split APK manifest")
+    need(root.attrib.get(ANDROID + "isFeatureSplit") in (None, "false", "0"),
+         "feature split APK manifest")
+    for node in (*application.findall("meta-data"), *root.findall("meta-data")):
+        if node.attrib.get(ANDROID + "name") == "com.android.vending.splits.required":
+            need(node.attrib.get(ANDROID + "value") in ("false", "0"), "APK requires splits")
     need("com.t3tools" not in xml and "app.t3.codes" not in xml, "official identity in manifest")
     need("u.expo.dev" not in xml and "d763fcb8-d37c-41ea-a773-b54a0ab4a454" not in xml, "upstream OTA configuration")
     enabled = [node.attrib.get(ANDROID + "value") for node in application.findall("meta-data") if node.attrib.get(ANDROID + "name") == "expo.modules.updates.ENABLED"]
@@ -71,6 +83,18 @@ def elf_alignment(data, name):
     return min(loads)
 
 
+def embedded_hermes_bundle(archive):
+    need(ANDROID_BUNDLE in archive.namelist(), "missing embedded Android bundle")
+    info = archive.getinfo(ANDROID_BUNDLE)
+    with archive.open(info) as stream:
+        header = stream.read(12)
+    need(info.file_size > 12 and len(header) == 12 and header[:8] == HERMES_MAGIC,
+         "embedded bundle is not nonempty Hermes bytecode")
+    version = int.from_bytes(header[8:], "little")
+    need(version > 0, "invalid Hermes bytecode version")
+    return {"entry": ANDROID_BUNDLE, "bytes": info.file_size, "hermesVersion": version}
+
+
 def inspect(apk, version, code, aapt2, apkanalyzer, zipalign, signed, archive_alignment=True):
     xml = subprocess.check_output([apkanalyzer, "manifest", "print", apk], text=True)
     result = manifest_check(xml)
@@ -87,6 +111,7 @@ def inspect(apk, version, code, aapt2, apkanalyzer, zipalign, signed, archive_al
     with zipfile.ZipFile(apk) as archive:
         names = archive.namelist()
         need(len(names) == len(set(names)), "duplicate APK entries")
+        result["embeddedBundle"] = embedded_hermes_bundle(archive)
         native = [name for name in names if name.startswith("lib/") and name.endswith(".so")]
         need(native and all(name.startswith("lib/arm64-v8a/") for name in native), "unexpected native ABI set")
         result["nativeLibraries"] = [{"file": name, "minimumLoadAlignment": elf_alignment(archive.read(name), name)} for name in native]

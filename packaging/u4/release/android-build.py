@@ -7,12 +7,15 @@ import os
 from pathlib import Path
 import platform
 import re
+import shlex
 import shutil
 import subprocess
 import sys
 
 sys.dont_write_bytecode = True
 HERE = Path(__file__).resolve().parent
+GRADLE_JVM_ARGS = "-Xmx3072m -XX:MaxMetaspaceSize=768m"
+NATIVE_LAUNCHERS = [f"CMAKE_{lang}_{kind}_LAUNCHER" for lang in ["C", "CXX"] for kind in ["COMPILER", "LINKER"]]
 spec = importlib.util.spec_from_file_location("owned_process", HERE / "owned-process.py")
 owned_module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(owned_module)
@@ -37,12 +40,25 @@ def capture(args, env, cwd=None):
 
 
 def private_env(work, node_bin, jdk, sdk):
+    launcher = [str(Path(sys.executable).resolve()), str(HERE / "native-build-limit.py"), str(work / "native-limit/command.lock")]
+    need(all(re.fullmatch(r"/[A-Za-z0-9_./-]+", value) for value in launcher), "unsupported native launcher path characters")
+    (work / "native-limit").mkdir(mode=0o700, parents=True)
+    with Path(launcher[-1]).open("xb") as stream:
+        os.fchmod(stream.fileno(), 0o600)
     values = {"HOME": work / "home", "TMPDIR": work / "tmp", "TMP": work / "tmp", "TEMP": work / "tmp", "XDG_CONFIG_HOME": work / "config", "XDG_CACHE_HOME": work / "cache", "XDG_DATA_HOME": work / "data", "XDG_STATE_HOME": work / "state", "XDG_RUNTIME_DIR": work / "run", "GRADLE_USER_HOME": work / "gradle"}
     for path in values.values():
         path.mkdir(mode=0o700, parents=True, exist_ok=True)
     env = {key: str(value) for key, value in values.items()}
     env.update({"PATH": f"{node_bin}:{jdk}/bin:/usr/bin:/bin", "JAVA_HOME": str(jdk), "ANDROID_HOME": str(sdk), "ANDROID_SDK_ROOT": str(sdk), "LANG": "C.UTF-8", "SHELL": "/bin/sh", "CI": "1", "EXPO_NO_TELEMETRY": "1", "EXPO_NO_DOTENV": "1", "NPM_CONFIG_USERCONFIG": "/dev/null", "NPM_CONFIG_GLOBALCONFIG": "/dev/null"})
+    env.update({"NODE_OPTIONS": "--max-old-space-size=1536", "CMAKE_BUILD_PARALLEL_LEVEL": "1"})
+    env.update(dict.fromkeys(NATIVE_LAUNCHERS, ";".join(launcher)))
     return env
+
+
+def configure_gradle_limits(work):
+    properties = work / "gradle/gradle.properties"
+    properties.write_text("org.gradle.daemon=false\norg.gradle.workers.max=1\norg.gradle.parallel=false\norg.gradle.jvmargs=" + GRADLE_JVM_ARGS + "\nkotlin.compiler.execution.strategy=in-process\nkotlin.daemon.enabled=false\nandroid.builder.sdkDownload=false\n")
+    return ["--no-daemon", "--max-workers=1", "--no-parallel", "-Dorg.gradle.daemon=false", "-Dorg.gradle.jvmargs=" + GRADLE_JVM_ARGS, "-Pkotlin.compiler.execution.strategy=in-process", "-Dkotlin.daemon.enabled=false"]
 
 
 def sdk_inventory(sdk):
@@ -63,14 +79,29 @@ def package_revision(sdk, package):
     return match.group(1)
 
 
-def native_build_inputs(source, sdk):
+def guarded_native_commands(commands, launcher, ndk):
+    counts = {"compile": 0, "link": 0}
+    for command in commands.splitlines():
+        words = shlex.split(command)
+        for index, word in enumerate(words):
+            if not re.fullmatch(r"clang(?:\+\+)?(?:-\d+)?|ld(?:\.lld|\.gold)?|lld", Path(word).name):
+                continue
+            need(Path(word).is_absolute() and Path(word).resolve().is_relative_to(ndk), "native command compiler differs from pinned NDK")
+            need(index >= len(launcher) and words[index-len(launcher):index] == launcher, "native command bypasses aggregate launcher: " + command)
+            counts["compile" if "-c" in words else "link"] += 1
+    return counts
+
+
+def native_build_inputs(source, sdk, env):
     expected_cmake = (sdk / "cmake/3.22.1/bin/cmake").resolve()
     expected_ndk = (sdk / "ndk/27.1.12297006").resolve()
     inputs = []
+    graphs = set()
     for cache in sorted(source.rglob("CMakeCache.txt")):
         relative = cache.relative_to(source)
         probe_parts = relative.parts[-4:-1]
         if ".cxx" in relative.parts and probe_parts in [("CMakeFiles", "_CMakeLTOTest-CXX", "bin"), ("CMakeFiles", "_CMakeLTOTest-C", "bin")] and (cache.parents[3] / "CMakeCache.txt").is_file():
+            graphs.add(cache.parent)
             continue
         values = dict(re.findall(r"^([^#/:=]+):[^=]+=([^\n]*)$", cache.read_text(), re.M))
         command = values.get("CMAKE_COMMAND", "")
@@ -79,8 +110,22 @@ def native_build_inputs(source, sdk):
         compiler = values.get("CMAKE_CXX_COMPILER", "")
         toolchain = values.get("CMAKE_TOOLCHAIN_FILE", "")
         need((ndk and Path(ndk).resolve() == expected_ndk) or any(value and Path(value).resolve().is_relative_to(expected_ndk) for value in [compiler, toolchain]), "actual NDK differs or is unproven: " + str(cache))
-        inputs.append({"cache": str(cache.relative_to(source)), "sha256": sha(cache), "cmakeCommand": command, "ndk": str(expected_ndk), "compiler": compiler, "toolchain": toolchain})
+        rules = cache.parent / "CMakeFiles/rules.ninja"
+        languages = set(re.findall(r"^rule (C|CXX)_(?:COMPILER|(?:SHARED_LIBRARY|MODULE_LIBRARY|EXECUTABLE)_LINKER)__", rules.read_text(), re.M))
+        need(languages, "actual native Ninja rules missing: " + str(cache))
+        for lang in languages:
+            for kind in ["COMPILER", "LINKER"]:
+                key = f"CMAKE_{lang}_{kind}_LAUNCHER"
+                need(values.get(key) == env[key], "actual native launcher cache differs or is unproven: " + key + " in " + str(cache))
+        ninja = sdk / "cmake/3.22.1/bin/ninja"
+        need(values.get("CMAKE_MAKE_PROGRAM") == str(ninja), "actual Ninja differs or is unproven: " + str(cache))
+        commands = capture([str(ninja), "-t", "commands"], env, cache.parent)
+        counts = guarded_native_commands(commands, env[NATIVE_LAUNCHERS[0]].split(";"), expected_ndk)
+        need(counts["compile"], "actual native compile commands missing: " + str(cache))
+        graphs.add(cache.parent)
+        inputs.append({"cache": str(cache.relative_to(source)), "sha256": sha(cache), "cmakeCommand": command, "ndk": str(expected_ndk), "compiler": compiler, "toolchain": toolchain, "ninjaRulesSha256": sha(rules), "aggregateLauncher": env[NATIVE_LAUNCHERS[0]], "guardedCommands": counts, "commandsSha256": hashlib.sha256(commands.encode()).hexdigest()})
     need(inputs, "actual CMakeCache inputs missing")
+    need(all(graph.parent in graphs for graph in source.rglob("build.ninja")), "native Ninja graph has no validated CMakeCache")
     return inputs
 
 
@@ -157,19 +202,23 @@ def build(args):
         need(releases and not re.search(r"\b(?:signingConfigs?|storeFile|storePassword|keyAlias|keyPassword)\b", build_gradle), "all signing configuration must be absent")
         for relative in ["app/build.gradle", "gradle/wrapper/gradle-wrapper.properties", "app/src/main/AndroidManifest.xml"]:
             shutil.copyfile(android / relative, evidence_dir / (args.role + "-" + relative.replace("/", "-")))
-        (work / "gradle/gradle.properties").write_text("org.gradle.daemon=false\nkotlin.compiler.execution.strategy=in-process\nkotlin.daemon.enabled=false\nandroid.builder.sdkDownload=false\n")
         gradlew = str(android / "gradlew")
-        gradle_flags = ["--no-daemon", "-Dorg.gradle.daemon=false", "-Dorg.gradle.workers.max=4", "-Pkotlin.compiler.execution.strategy=in-process", "-Dkotlin.daemon.enabled=false"]
+        gradle_flags = configure_gradle_limits(work)
+        resources = {"gradleFlags": gradle_flags, "gradlePropertiesSha256": sha(work / "gradle/gradle.properties"), "nodeOptions": production["NODE_OPTIONS"], "cmakeBuildParallelLevel": production["CMAKE_BUILD_PARALLEL_LEVEL"], "nativeLaunchers": {key: production[key] for key in NATIVE_LAUNCHERS}, "nativeLauncherSha256": sha(HERE / "native-build-limit.py"), "requestedAggregateNativeCommands": 1, "nativeWiringValidated": False, "externalProcessTreeLimitRequired": True}
+        (evidence_dir / f"android-{args.role}-resources.json").write_text(json.dumps(resources, indent=2) + "\n")
         sdk_before = sdk_inventory(sdk)
         try:
             owned.run([gradlew, *gradle_flags, "--version"], cwd=android, env=production, log=log)
             owned.run([gradlew, *gradle_flags, "app:assembleRelease", "-PreactNativeArchitectures=arm64-v8a"], cwd=android, env=production, log=log)
-            owned.run([gradlew, "--stop"], cwd=android, env=production, log=log)
+            owned.run([gradlew, *gradle_flags, "--stop"], cwd=android, env=production, log=log)
         finally:
             sdk_after = sdk_inventory(sdk)
             (evidence_dir / f"android-{args.role}-sdk-inventory.json").write_text(json.dumps({"before": sdk_before, "after": sdk_after}, indent=2) + "\n")
             require_unchanged_sdk(sdk_before, sdk_after)
-        native_inputs = native_build_inputs(source, sdk)
+        native_inputs = native_build_inputs(source, sdk, production)
+        resources["nativeWiringValidated"] = True
+        resources["nativeBuildInputs"] = native_inputs
+        (evidence_dir / f"android-{args.role}-resources.json").write_text(json.dumps(resources, indent=2) + "\n")
         built = android / "app/build/outputs/apk/release/app-release-unsigned.apk"
         build_tools = sdk / "build-tools/37.0.0"
         analyzer = sdk / "cmdline-tools/latest/bin/apkanalyzer"
