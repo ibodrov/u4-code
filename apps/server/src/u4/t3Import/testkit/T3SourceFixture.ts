@@ -121,6 +121,57 @@ export const createSource = Effect.fn("T3SourceFixture.create")(function* (
       occurredAt: FIXTURE_TIME,
       payload,
     });
+    // Migration 95 added a derived column to the current projection writer.
+    if (head < 95 && event.type === "turn-item.updated") {
+      const payloadJson = yield* ProjectionStore.encodeTurnItemPayload(event.payload);
+      const updatedAt = yield* Schema.encodeEffect(Schema.DateTimeUtcFromString)(
+        event.payload.updatedAt,
+      );
+      yield* sql`
+        INSERT INTO orchestration_v2_projection_turn_items (
+          turn_item_id,
+          thread_id,
+          run_id,
+          node_id,
+          provider_thread_id,
+          provider_turn_id,
+          parent_item_id,
+          ordinal,
+          type,
+          status,
+          updated_at,
+          payload_json
+        )
+        VALUES (
+          ${event.payload.id},
+          ${event.payload.threadId},
+          ${event.payload.runId},
+          ${event.payload.nodeId},
+          ${event.payload.providerThreadId},
+          ${event.payload.providerTurnId},
+          ${event.payload.parentItemId},
+          ${event.payload.ordinal},
+          ${event.payload.type},
+          ${event.payload.status},
+          ${updatedAt},
+          ${payloadJson}
+        )
+        ON CONFLICT(turn_item_id)
+        DO UPDATE SET
+          thread_id = excluded.thread_id,
+          run_id = excluded.run_id,
+          node_id = excluded.node_id,
+          provider_thread_id = excluded.provider_thread_id,
+          provider_turn_id = excluded.provider_turn_id,
+          parent_item_id = excluded.parent_item_id,
+          ordinal = excluded.ordinal,
+          type = excluded.type,
+          status = excluded.status,
+          updated_at = excluded.updated_at,
+          payload_json = excluded.payload_json
+      `;
+      return;
+    }
     yield* store.apply(event);
   });
   return { home, userdata, dbPath, sql, store, apply, directory };
