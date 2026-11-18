@@ -15,6 +15,7 @@ import {
 import {
   assetReferences,
   contentDigests,
+  isDerivedDigestColumn,
   mapUnit,
   reownAssets,
   TABLE_KEYS,
@@ -164,6 +165,7 @@ export const streamDigests = Effect.fn("T3Import.streamDigests")(function* <E, R
             for (const [column, value] of Object.entries(row).sort(([a], [b]) =>
               a.localeCompare(b),
             )) {
+              if (isDerivedDigestColumn(table, column)) continue;
               part(hash, column);
               part(hash, value instanceof Uint8Array ? "blob" : typeof value);
               part(hash, value instanceof Uint8Array ? value : encodeJson(value));

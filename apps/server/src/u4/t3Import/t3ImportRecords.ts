@@ -43,6 +43,11 @@ const decodeDomainEvent = Schema.decodeUnknownSync(C.OrchestrationV2DomainEventJ
 const encodeDomainEvent = Schema.encodeSync(
   Schema.fromJsonString(C.OrchestrationV2DomainEventJson),
 );
+// The inline output flag is derived from payload_json and did not exist before migration 95.
+export function isDerivedDigestColumn(table: string, column: string): boolean {
+  return table === "turn_items" && column === "inline_work_output";
+}
+
 export type StoredRow = Readonly<Record<string, string | number | null | Uint8Array>>;
 export interface SourceRecord {
   readonly row: StoredRow;
@@ -132,6 +137,11 @@ export function structuralReferences(
       case "run.created":
         if (event.payload.delegatedTaskId !== undefined)
           add(PROJECTION_PREFIX + "subagents", ["subagent_id"], [event.payload.delegatedTaskId]);
+        add(
+          PROJECTION_PREFIX + "runs",
+          ["run_id", "thread_id"],
+          [event.payload.manualContinuationOfRunId, event.payload.threadId],
+        );
         break;
       case "subagent.updated":
         thread(event.payload.childThreadId);
@@ -284,6 +294,7 @@ export function contentDigests(
         )
           continue;
         for (const [column, value] of Object.entries(row).sort(([a], [b]) => a.localeCompare(b))) {
+          if (isDerivedDigestColumn(table, column)) continue;
           part(column);
           part(value instanceof Uint8Array ? "blob" : typeof value);
           part(value instanceof Uint8Array ? value : JSON.stringify(value));

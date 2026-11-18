@@ -102,7 +102,7 @@ export const buildMappedUnit = Effect.fn("T3Import.buildMappedUnit")(function* (
         const destinationHead = yield* destination<{
           head: number;
         }>`SELECT MAX(migration_id) AS head FROM effect_sql_migrations`;
-        if (head[0]?.head !== 89 || destinationHead[0]?.head !== head[0].head)
+        if (head[0]?.head !== 96 || destinationHead[0]?.head !== head[0].head)
           return yield* bindingError();
         const names = SOURCE_TABLES.map(sourceTableName);
         const triggers = yield* sql<{
