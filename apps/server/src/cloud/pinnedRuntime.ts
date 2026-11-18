@@ -25,6 +25,7 @@ import {
 } from "@t3tools/shared/cliRelease";
 
 import * as HostProcess from "@t3tools/shared/HostProcess";
+import { PRODUCT_CLI_COMMAND } from "@t3tools/shared/productIdentity";
 
 import * as ProcessRunner from "../processRunner.ts";
 import { isExactServiceVersion, parseServiceState, SERVICE_STATE_FILE } from "./serviceProtocol.ts";
@@ -597,15 +598,15 @@ export const findPosixLauncher = Effect.fn("cloud.pinned_runtime.find_posix_laun
       .pipe(Effect.orElseSucceed(() => ""));
     const cwd = yield* HostProcess.WorkingDirectory;
     const candidates = [
-      // PATH first, resolved like the shell does: it decides which t3 the user runs.
+      // PATH first, resolved like the shell does.
       ...(environment["PATH"] ?? "")
         .split(":")
         .filter((directory) => directory.length > 0)
-        .map((directory) => path.resolve(cwd, directory, "t3")),
+        .map((directory) => path.resolve(cwd, directory, PRODUCT_CLI_COMMAND)),
       path.join(
         environment["T3CODE_INSTALL_BIN_DIR"] ||
           path.join(yield* HostProcess.HomeDirectory, ".local", "bin"),
-        "t3",
+        PRODUCT_CLI_COMMAND,
       ),
       ...recorded.split(/\r?\n/),
     ].filter((candidate) => path.isAbsolute(candidate));
@@ -644,7 +645,7 @@ export const writePosixLauncher = Effect.fn("cloud.pinned_runtime.write_posix_la
   Effect.scoped,
 );
 
-/** Where the `t3` launchers written by the install scripts and `t3 update` point. */
+/** Where the launchers written by the install scripts and CLI update point. */
 const shellLauncherTargets = Effect.fn("cloud.pinned_runtime.shell_launcher_targets")(function* (
   baseDir: string,
 ) {
@@ -653,21 +654,32 @@ const shellLauncherTargets = Effect.fn("cloud.pinned_runtime.shell_launcher_targ
   const platform = yield* HostProcess.Platform;
   const environment = yield* HostProcess.Environment;
   const home = yield* HostProcess.HomeDirectory;
-  const launcherName = platform === "win32" ? "t3.cmd" : "t3";
+  const launcherName = platform === "win32" ? "t3.cmd" : PRODUCT_CLI_COMMAND;
   const launchersFile = path.join(baseDir, PINNED_RUNTIME_DIR, PINNED_RUNTIME_LAUNCHERS_FILE);
   const recorded = (yield* fs.readFileString(launchersFile).pipe(Effect.orElseSucceed(() => "")))
     .split(/\r?\n/)
     .filter((launcher) => launcher.trim().length > 0);
-  const found = [
+  const binDirs = [
     environment["T3CODE_INSTALL_BIN_DIR"] || path.join(home, ".local", "bin"),
     ...(environment["PATH"] ?? environment["Path"] ?? "").split(platform === "win32" ? ";" : ":"),
-  ]
-    .filter((directory) => path.isAbsolute(directory))
-    .map((directory) => path.join(directory, launcherName));
+  ].filter((directory) => path.isAbsolute(directory));
+  const found = binDirs.map((directory) => path.join(directory, launcherName));
   const versionsDir = pinnedRuntimeVersionsDir(path, baseDir);
   const realVersionsDir = yield* fs
     .realPath(versionsDir)
     .pipe(Effect.orElseSucceed(() => versionsDir));
+  if (platform !== "win32") {
+    // A PATH directory can link straight to a bundled runtime, whose entry is still named t3.
+    for (const directory of binDirs) {
+      const realDir = yield* fs.realPath(directory).pipe(Effect.option);
+      if (
+        Option.isSome(realDir) &&
+        isVersionExecutable(path, realVersionsDir, path.join(realDir.value, "t3"))
+      ) {
+        found.push(path.join(directory, "t3"));
+      }
+    }
+  }
   const inVersionsDir = (candidate: string) =>
     launcherOwnsVersionsDir(path, versionsDir, candidate) ||
     launcherOwnsVersionsDir(path, realVersionsDir, candidate);
