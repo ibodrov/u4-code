@@ -10,7 +10,9 @@ import {
   NodeId,
   CheckpointId,
   type OrchestrationV2AppThread,
+  type OrchestrationV2ExecutionNode,
   type OrchestrationV2ProviderThread,
+  type OrchestrationV2TurnItem,
   type ModelSelection,
   type ChatAttachment,
 } from "@t3tools/contracts";
@@ -29,6 +31,7 @@ import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
 import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
 import * as TestProviderHost from "@t3tools/provider-testing/TestProviderHost";
+import { derivePendingBackgroundWork } from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
 import { makeOmpAdapterV2 } from "./adapter.ts";
 import { makeFakeOmp } from "./adapter.testkit.ts";
 import { normalizeOmpModels } from "./status.ts";
@@ -399,64 +402,266 @@ describe("oh-my-pi native adapter", () => {
       }).pipe(Effect.scoped, Effect.provide(layerTest)),
   );
 
-  it.effect("keeps late native children on their original run and adopts the continuation", () =>
+  it.effect.each(["completed", "failed", "cancelled"] as const)(
+    "settles a recorded backgrounded bash command as %s on a tool update",
+    (status) =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const recording = decode(
+          yield* fs.readFileString(
+            new URL("./fixtures/steering-queued.json", import.meta.url).pathname,
+          ),
+        );
+        const [start, handoff, progress, completion] = [61, 68, 89, 90].map(
+          (frame) => recording[frame - 1]!.frame,
+        );
+        const fake = yield* makeFakeOmp();
+        const { runtime, takeEvent } = yield* openRuntime(fake);
+        const thread = yield* runtime.ensureThread({
+          threadId: THREAD_ID,
+          modelSelection: modelSelection(),
+          runtimePolicy,
+        });
+
+        yield* startTurn(runtime, thread);
+        const prompt = yield* fake.takeRequest("prompt");
+        yield* fake.emit({ type: "agent_start" });
+        for (const frame of [start!, handoff!, progress!]) yield* fake.emit(frame);
+        const boundedOutput =
+          status === "failed" ? "Command exited with code 1" : "Command cancelled";
+        yield* fake.emit(
+          status === "completed"
+            ? completion!
+            : {
+                type: "tool_execution_update",
+                toolCallId: start!.toolCallId,
+                toolName: "bash",
+                partialResult: {
+                  content: [{ type: "text", text: boundedOutput }],
+                  details: {
+                    async: { state: status, jobId: "bg_1", type: "bash" },
+                    ...(status === "failed" ? { exitCode: 1 } : {}),
+                  },
+                },
+              },
+        );
+        yield* fake.emit(progress!);
+        yield* fake.emit({
+          type: "prompt_result",
+          id: prompt.id,
+          status: "completed",
+          sessionSettled: true,
+        });
+
+        const items: Array<Extract<OrchestrationV2TurnItem, { type: "command_execution" }>> = [];
+        const nodes: OrchestrationV2ExecutionNode[] = [];
+        yield* takeEvent((event) => {
+          if (
+            event.type === "node.updated" &&
+            event.node.nativeItemRef?.nativeId === start!.toolCallId
+          ) {
+            nodes.push(event.node);
+          }
+          if (event.type === "turn_item.updated" && event.turnItem.type === "command_execution") {
+            items.push(event.turnItem);
+          }
+          return event.type === "turn.terminal";
+        });
+        assert.deepEqual(
+          items.map((item) => item.status),
+          ["running", "running", "running", status],
+        );
+        assert.deepEqual(
+          nodes.map((node) => node.status),
+          items.map((item) => item.status),
+        );
+        const [initial, backgrounded, running, settled] = items;
+        assert.include(backgrounded?.output, "Backgrounded as job bg_1");
+        assert.equal(running?.output, "ORIGINAL");
+        assert.equal(
+          settled?.output,
+          status === "completed" ? "ORIGINAL\n\nWall time: 2.02 seconds" : boundedOutput,
+        );
+        assert.equal(settled?.exitCode, status === "failed" ? 1 : undefined);
+        assert.isNotNull(settled?.completedAt);
+        for (const item of items) {
+          assert.equal(item.id, initial?.id);
+          assert.equal(item.input, "sleep 2; printf ORIGINAL");
+          assert.deepEqual(item.startedAt, initial?.startedAt);
+        }
+      }).pipe(Effect.scoped, Effect.provide(layerTest)),
+  );
+
+  it.effect.each([
+    { exitCode: 0, status: "completed" },
+    { exitCode: 1, status: "failed" },
+  ] as const)("settles a synchronous bash command as $status", ({ exitCode, status }) =>
     Effect.gen(function* () {
-      const fs = yield* FileSystem.FileSystem;
-
-      const recording = decode(
-        yield* fs.readFileString(
-          new URL("./fixtures/background-child.json", import.meta.url).pathname,
-        ),
-      );
-
       const fake = yield* makeFakeOmp();
-      const wakes =
-        yield* Queue.unbounded<
-          import("@t3tools/provider-core/server/ProviderContinuationRequests").ProviderContinuationRequest
-        >();
-
-      const { runtime, takeEvent } = yield* openRuntime(fake, {
-        offer: (request) => Queue.offer(wakes, request).pipe(Effect.asVoid),
-      });
-
+      const { runtime, takeEvent } = yield* openRuntime(fake);
       const thread = yield* runtime.ensureThread({
         threadId: THREAD_ID,
         modelSelection: modelSelection(),
         runtimePolicy,
       });
-      const start = recording.findIndex((entry) => entry.frame.type === "prompt");
-      fake.scripts.push(
-        recording
-          .slice(start + 1)
-          .filter((entry) => entry.direction === "in" && entry.frame.type !== "response")
-          .map((entry) => entry.frame),
-      );
-
       yield* startTurn(runtime, thread);
-
-      const root = yield* takeEvent((e) => e.type === "turn.terminal");
-      assert.equal(root.type === "turn.terminal" && root.status, "completed");
-
-      const wake = yield* Queue.take(wakes);
-
-      assert.equal(wake.providerThreadId, thread.id);
-      assert.isTrue(yield* runtime.hasPendingBackgroundWork!);
-      yield* startTurn(runtime, thread, "default", [], "", undefined, 2, THREAD_ID, true);
-
-      const child = yield* takeEvent(
-        (e) => e.type === "subagent.updated" && e.subagent.status === "completed",
+      const prompt = yield* fake.takeRequest("prompt");
+      const toolCall = { toolCallId: "sync-bash", toolName: "bash" };
+      yield* fake.emit({ type: "agent_start" });
+      yield* fake.emit({ type: "tool_execution_start", ...toolCall, args: { command: "fixture" } });
+      const output = `Fixture exit ${exitCode}`;
+      yield* fake.emit({
+        type: "tool_execution_end",
+        ...toolCall,
+        isError: exitCode !== 0,
+        result: { content: [{ type: "text", text: output }], details: { exitCode } },
+      });
+      yield* fake.emit({
+        type: "prompt_result",
+        id: prompt.id,
+        status: "completed",
+        sessionSettled: true,
+      });
+      const commands: Array<Extract<OrchestrationV2TurnItem, { type: "command_execution" }>> = [];
+      yield* takeEvent((event) => {
+        if (event.type === "turn_item.updated" && event.turnItem.type === "command_execution") {
+          commands.push(event.turnItem);
+        }
+        return event.type === "turn.terminal";
+      });
+      assert.deepEqual(
+        commands.map((item) => item.status),
+        ["running", status],
       );
-      assert.equal(
-        child.type === "subagent.updated" && child.subagent.runId,
-        RunId.make(`run:${THREAD_ID}:1`),
-      );
-
-      const continuation = yield* takeEvent((e) => e.type === "turn.terminal");
-      assert.equal(continuation.type === "turn.terminal" && continuation.status, "completed");
-
-      assert.isFalse(yield* runtime.hasPendingBackgroundWork!);
-      assert.equal(fake.outbound.filter((entry) => entry.type === "prompt").length, 1);
+      assert.include(commands[1]!, { id: commands[0]!.id, input: "fixture", output, exitCode });
     }).pipe(Effect.scoped, Effect.provide(layerTest)),
+  );
+
+  it.effect.each(["completed", "missing terminal update", "stopped wake"] as const)(
+    "keeps late native work on its original run (%s)",
+    (scenario) =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+
+        const recording = decode(
+          yield* fs.readFileString(
+            new URL("./fixtures/background-child.json", import.meta.url).pathname,
+          ),
+        );
+
+        const fake = yield* makeFakeOmp();
+        const wakes =
+          yield* Queue.unbounded<
+            import("@t3tools/provider-core/server/ProviderContinuationRequests").ProviderContinuationRequest
+          >();
+
+        const { runtime, takeEvent } = yield* openRuntime(fake, {
+          offer: (request) => Queue.offer(wakes, request).pipe(Effect.asVoid),
+        });
+
+        const thread = yield* runtime.ensureThread({
+          threadId: THREAD_ID,
+          modelSelection: modelSelection(),
+          runtimePolicy,
+        });
+        const start = recording.findIndex((entry) => entry.frame.type === "prompt");
+        const end = scenario === "stopped wake" ? 100 : recording.length;
+        fake.scripts.push(
+          recording
+            .slice(start + 1, end)
+            .filter(
+              (entry, index) =>
+                entry.direction === "in" &&
+                entry.frame.type !== "response" &&
+                // Leave session_settled as the continuation's finalization signal when frame 99 is absent.
+                (scenario === "completed" || ![99, 113].includes(start + index + 2)),
+            )
+            .map((entry) => entry.frame),
+        );
+        const taskCallId = recording[73]!.frame.toolCallId;
+        const taskItems: Array<Extract<OrchestrationV2TurnItem, { type: "dynamic_tool" }>> = [];
+        const taskNodes: OrchestrationV2ExecutionNode[] = [];
+        const takeLifecycleEvent = (predicate: Parameters<typeof takeEvent>[0]) =>
+          takeEvent((event) => {
+            if (
+              event.type === "node.updated" &&
+              event.node.nativeItemRef?.nativeId === taskCallId
+            ) {
+              taskNodes.push(event.node);
+            }
+            if (
+              event.type === "turn_item.updated" &&
+              event.turnItem.type === "dynamic_tool" &&
+              event.turnItem.nativeItemRef?.nativeId === taskCallId
+            ) {
+              taskItems.push(event.turnItem);
+            }
+            return predicate(event);
+          });
+
+        yield* startTurn(runtime, thread);
+
+        const root = yield* takeLifecycleEvent((e) => e.type === "turn.terminal");
+        assert.equal(root.type === "turn.terminal" && root.status, "completed");
+        const group = (item: (typeof taskItems)[number]) =>
+          derivePendingBackgroundWork({
+            latestRun: { id: RunId.make(`run:${THREAD_ID}:1`), ordinal: 1, status: "completed" },
+            providerThreads: [],
+            turnItems: [item],
+          });
+        assert.lengthOf(group(taskItems.at(-1)!), 1);
+
+        const wake = yield* Queue.take(wakes);
+
+        assert.equal(wake.providerThreadId, thread.id);
+        assert.isTrue(yield* runtime.hasPendingBackgroundWork!);
+        if (scenario === "stopped wake") {
+          yield* wake.clearIfCurrent!();
+          yield* takeLifecycleEvent(
+            (e) => e.type === "provider_session.updated" && e.providerSession.status === "stopped",
+          );
+        } else {
+          yield* startTurn(runtime, thread, "default", [], "", undefined, 2, THREAD_ID, true);
+
+          const child = yield* takeLifecycleEvent(
+            (e) => e.type === "subagent.updated" && e.subagent.status === "completed",
+          );
+          assert.equal(
+            child.type === "subagent.updated" && child.subagent.runId,
+            RunId.make(`run:${THREAD_ID}:1`),
+          );
+          const continuation = yield* takeLifecycleEvent((e) => e.type === "turn.terminal");
+          assert.equal(continuation.type === "turn.terminal" && continuation.status, "completed");
+          assert.isFalse(yield* runtime.hasPendingBackgroundWork!);
+        }
+
+        const settled = taskItems.at(-1)!;
+        const status =
+          scenario === "completed"
+            ? "completed"
+            : scenario === "stopped wake"
+              ? "interrupted"
+              : "failed";
+        assert.equal(settled.status, status);
+        assert.deepEqual(
+          taskItems.filter((item) => item.status !== "running"),
+          [settled],
+        );
+        assert.deepEqual(
+          taskNodes.filter((node) => node.status !== "running").map((node) => node.status),
+          [status],
+        );
+        assert.equal(settled.runId, RunId.make(`run:${THREAD_ID}:1`));
+        assert.isNotNull(settled.completedAt);
+        assert.deepEqual(group(settled), []);
+        if (scenario === "completed") {
+          assert.equal(settled.output, "Background task ChildDone complete.");
+        } else {
+          assert.deepEqual(settled.output, taskItems.at(-2)?.output);
+        }
+
+        assert.equal(fake.outbound.filter((entry) => entry.type === "prompt").length, 1);
+      }).pipe(Effect.scoped, Effect.provide(layerTest)),
   );
 
   it.effect(

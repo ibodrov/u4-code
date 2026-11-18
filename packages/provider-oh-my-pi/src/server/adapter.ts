@@ -345,6 +345,22 @@ function compactionTitle(status: OmpCompactionStatus): string {
   }
 }
 
+interface OmpToolCall {
+  readonly toolName: string;
+  readonly args: unknown;
+  readonly parentToolCallId: string | undefined;
+  readonly startedAt: DateTime.Utc;
+}
+
+interface OmpBackgroundToolCall {
+  readonly turn: ActiveOmpTurn;
+  readonly call: OmpToolCall;
+  readonly handoffFailed: boolean;
+  readonly result: unknown;
+}
+
+type OmpToolStatus = "running" | "completed" | "failed" | "interrupted" | "cancelled";
+
 interface ActiveOmpTurn {
   readonly turnInput: ProviderAdapter.ProviderAdapterV2TurnInput;
   readonly providerTurn: OrchestrationV2ProviderTurn;
@@ -353,9 +369,7 @@ interface ActiveOmpTurn {
   nextItemOrdinal: number;
   messageOrdinal: number;
   readonly streamItems: Map<string, OmpStreamItemState>;
-  readonly toolArgs: Map<string, unknown>;
-  readonly toolNames: Map<string, string>;
-  readonly toolStartedAt: Map<string, DateTime.Utc>;
+  readonly toolCalls: Map<string, OmpToolCall | null>;
   interrupted: boolean;
   nativeAborted: boolean;
   sawAgentActivity: boolean;
@@ -544,6 +558,7 @@ export const makeOmpAdapterV2 = Effect.fn("makeOmpAdapterV2")(function* (
         let runtimeRetired = false;
         let pendingWake: OmpWake | null = null;
         let nativeBackgroundWork = false;
+        const backgroundToolCalls = new Map<string, OmpBackgroundToolCall>();
         const nativeChildren = new Map<
           string,
           { turn: ActiveOmpTurn; entity: OrchestrationV2Subagent; index: number | undefined }
@@ -1209,36 +1224,15 @@ export const makeOmpAdapterV2 = Effect.fn("makeOmpAdapterV2")(function* (
 
         const emitToolItem = Effect.fnUntraced(function* (
           turn: ActiveOmpTurn,
-          event: OmpRpcRecord,
-          phase: "start" | "update" | "end",
+          toolCallId: string,
+          call: OmpToolCall,
+          resultRecord: unknown,
+          status: OmpToolStatus,
         ) {
-          const toolCallId = recordString(event, "toolCallId");
-          const toolName = recordString(event, "toolName") ?? "tool";
-          const parentToolCallId = recordString(event, "parentToolCallId");
-          if (toolCallId === undefined) return;
-          if (phase === "start") {
-            turn.toolArgs.set(toolCallId, event["args"]);
-            turn.toolNames.set(toolCallId, toolName);
-          }
-          const args = event["args"] ?? turn.toolArgs.get(toolCallId);
-          if (phase === "end") {
-            turn.toolArgs.delete(toolCallId);
-            turn.toolNames.delete(toolCallId);
-          }
+          const { toolName, args, parentToolCallId, startedAt } = call;
           const emittedAt = yield* DateTime.now;
-          const startedAt = turn.toolStartedAt.get(toolCallId) ?? emittedAt;
-          turn.toolStartedAt.set(toolCallId, startedAt);
-          const completed = phase === "end";
-          const isError = event["isError"] === true;
-          const resultRecord = completed ? event["result"] : event["partialResult"];
+          const completedAt = status === "running" ? null : emittedAt;
           const outputText = contentText(recordField(resultRecord, "content"));
-          const status = completed
-            ? isError
-              ? turn.interrupted
-                ? "interrupted"
-                : "failed"
-              : "completed"
-            : "running";
           const base = baseItemFields(turn, toolCallId, startedAt, emittedAt, parentToolCallId);
           yield* emitItemNode(
             turn,
@@ -1246,13 +1240,13 @@ export const makeOmpAdapterV2 = Effect.fn("makeOmpAdapterV2")(function* (
             "tool_call",
             status,
             startedAt,
-            completed ? emittedAt : null,
+            completedAt,
             parentToolCallId,
           );
           const shared = {
             ...base,
             status,
-            completedAt: completed ? emittedAt : null,
+            completedAt,
           } as const;
           if (toolName === "bash" || toolName === "powershell") {
             const exitCode =
@@ -1277,7 +1271,9 @@ export const makeOmpAdapterV2 = Effect.fn("makeOmpAdapterV2")(function* (
             if (fileName !== undefined) {
               const diffStr =
                 recordString(recordField(resultRecord, "details"), "patch") ??
-                (isError && outputText.trim().length > 0 ? outputText : undefined);
+                ((status === "failed" || status === "interrupted") && outputText.trim().length > 0
+                  ? outputText
+                  : undefined);
               const newStr = toolName === "write" ? recordString(args, "content") : undefined;
               yield* emit({
                 type: "turn_item.updated",
@@ -1308,6 +1304,70 @@ export const makeOmpAdapterV2 = Effect.fn("makeOmpAdapterV2")(function* (
               ...(output === undefined ? {} : { output }),
             },
           });
+        });
+
+        // Tool progress can arrive at stream frequency.
+        const handleToolExecution = Effect.fnUntraced(function* (
+          turn: ActiveOmpTurn,
+          toolCallId: string,
+          event: OmpRpcRecord,
+          background: OmpBackgroundToolCall | undefined,
+        ) {
+          const prior = background?.call ?? turn.toolCalls.get(toolCallId);
+          const isUpdate = event.type === "tool_execution_update";
+          const isEnd = event.type === "tool_execution_end";
+          if (prior === null || (isUpdate && prior === undefined)) return;
+          const call = {
+            toolName: recordString(event, "toolName") ?? prior?.toolName ?? "tool",
+            args: event.args ?? prior?.args,
+            parentToolCallId: recordString(event, "parentToolCallId") ?? prior?.parentToolCallId,
+            startedAt: prior?.startedAt ?? (yield* DateTime.now),
+          } satisfies OmpToolCall;
+          const result = isEnd ? event.result : event.partialResult;
+          const asyncState = recordString(
+            recordField(recordField(result, "details"), "async"),
+            "state",
+          );
+          const isError = event.isError === true || background?.handoffFailed === true;
+          // Before handoff, an async task update can describe only the background part of a mixed call.
+          const asyncTerminal =
+            asyncState === "completed" || asyncState === "failed" || asyncState === "cancelled";
+          let status: OmpToolStatus = "running";
+          if ((isEnd && asyncState !== "running") || (background !== undefined && asyncTerminal)) {
+            if (asyncState === "failed" || asyncState === "cancelled") status = asyncState;
+            else if (isError) status = turn.interrupted ? "interrupted" : "failed";
+            else status = "completed";
+          }
+          const output = result ?? background?.result;
+          if (status !== "running") {
+            turn.toolCalls.set(toolCallId, null);
+            backgroundToolCalls.delete(toolCallId);
+          } else if (isEnd || background !== undefined) {
+            turn.toolCalls.set(toolCallId, null);
+            backgroundToolCalls.set(toolCallId, {
+              turn,
+              call,
+              handoffFailed: isError,
+              result: output,
+            });
+          } else {
+            turn.toolCalls.set(toolCallId, call);
+          }
+          yield* emitToolItem(turn, toolCallId, call, output, status);
+        });
+
+        const settleBackgroundToolCalls = Effect.fnUntraced(function* (owner?: ActiveOmpTurn) {
+          for (const [toolCallId, { turn, call, result }] of backgroundToolCalls) {
+            if (owner !== undefined && turn !== owner) continue;
+            backgroundToolCalls.delete(toolCallId);
+            yield* emitToolItem(
+              turn,
+              toolCallId,
+              call,
+              result,
+              stopRequested || turn.interrupted || turn.nativeAborted ? "interrupted" : "failed",
+            );
+          }
         });
 
         const cancelPrompt = Effect.fn("OmpAdapter.cancelPrompt")(function* (
@@ -1628,19 +1688,18 @@ export const makeOmpAdapterV2 = Effect.fn("makeOmpAdapterV2")(function* (
           const interrupted = turn.interrupted || turn.nativeAborted;
           const completedAt = yield* DateTime.now;
           yield* completeOpenStreamItems(turn);
-          for (const [toolCallId, args] of turn.toolArgs) {
-            const toolName = turn.toolNames.get(toolCallId) ?? "tool";
+          for (const [toolCallId, call] of turn.toolCalls) {
+            if (call === null) continue;
             yield* emitToolItem(
               turn,
-              {
-                toolCallId,
-                toolName,
-                args,
-                isError: true,
-                result: { content: [{ type: "text", text: "Tool ended with the provider turn" }] },
-              },
-              "end",
+              toolCallId,
+              call,
+              { content: [{ type: "text", text: "Tool ended with the provider turn" }] },
+              turn.interrupted ? "interrupted" : "failed",
             );
+          }
+          if (interrupted || turn.rejectedPromptFailure !== null || turn.failure !== null) {
+            yield* settleBackgroundToolCalls(turn);
           }
           if (turn.activeCompaction !== null) {
             const status = interrupted
@@ -1877,6 +1936,19 @@ export const makeOmpAdapterV2 = Effect.fn("makeOmpAdapterV2")(function* (
         const handleSessionEvent = Effect.fnUntraced(function* (event: OmpRpcRecord) {
           if (yield* bridge.handle(event)) return;
           if (yield* handleNativeChild(event)) return;
+          const toolExecution =
+            event.type === "tool_execution_start" ||
+            event.type === "tool_execution_update" ||
+            event.type === "tool_execution_end";
+          const toolCallId = toolExecution ? recordString(event, "toolCallId") : undefined;
+          if (toolCallId !== undefined) {
+            const background = backgroundToolCalls.get(toolCallId);
+            if (background !== undefined) {
+              yield* handleToolExecution(background.turn, toolCallId, event, background);
+              return;
+            }
+          }
+          if (event.type === "session_settled") yield* settleBackgroundToolCalls();
           if (event["type"] === "u4.extension_status_reset") {
             const reset = extensionStatusReset;
             if (reset !== null && event["reset"] === reset) {
@@ -2035,16 +2107,12 @@ export const makeOmpAdapterV2 = Effect.fn("makeOmpAdapterV2")(function* (
               return;
             }
             case "tool_execution_start":
-              if (turn !== null) {
-                turn.sawAgentActivity = true;
-                yield* emitToolItem(turn, event, "start");
-              }
-              return;
             case "tool_execution_update":
-              if (turn !== null) yield* emitToolItem(turn, event, "update");
-              return;
             case "tool_execution_end":
-              if (turn !== null) yield* emitToolItem(turn, event, "end");
+              if (turn !== null && toolCallId !== undefined) {
+                if (event.type === "tool_execution_start") turn.sawAgentActivity = true;
+                yield* handleToolExecution(turn, toolCallId, event, undefined);
+              }
               return;
             case "auto_compaction_start":
             case "manual_compaction_start":
@@ -2238,7 +2306,10 @@ export const makeOmpAdapterV2 = Effect.fn("makeOmpAdapterV2")(function* (
                 });
               if (event.status === "aborted") turn.nativeAborted = true;
               nativeBackgroundWork = event.sessionSettled === false;
-              if (!promptOwners.size) yield* finalizeTurn(state);
+              if (!promptOwners.size) {
+                if (event.sessionSettled === true) yield* settleBackgroundToolCalls();
+                yield* finalizeTurn(state);
+              }
               return;
             }
             case "response": {
@@ -2379,6 +2450,7 @@ export const makeOmpAdapterV2 = Effect.fn("makeOmpAdapterV2")(function* (
                 } else {
                   yield* cancelPendingPrompts(yield* DateTime.now);
                 }
+                yield* settleBackgroundToolCalls();
                 if (unsolicitedActivityDetected) {
                   yield* updateProviderSession("error", OMP_UNSOLICITED_ACTIVITY_ERROR);
                   yield* Queue.end(events);
@@ -2823,9 +2895,7 @@ export const makeOmpAdapterV2 = Effect.fn("makeOmpAdapterV2")(function* (
                 nextItemOrdinal: turnInput.providerTurnOrdinal * 100 + 1,
                 messageOrdinal: 0,
                 streamItems: new Map(),
-                toolArgs: new Map(),
-                toolNames: new Map(),
-                toolStartedAt: new Map(),
+                toolCalls: new Map(),
                 interrupted: false,
                 nativeAborted: false,
                 sawAgentActivity: false,
