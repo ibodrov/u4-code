@@ -835,28 +835,29 @@ it.layer(NodeServices.layer)("prunePinnedRuntimes", (it) => {
     }),
   );
 
-  it.effect("matches a Windows shim whatever its casing", () =>
-    Effect.gen(function* () {
-      const fs = yield* FileSystem.FileSystem;
-      const path = yield* Path.Path;
-      const { baseDir, versionsDir } = yield* setup(["1.0.0", "1.1.0"]);
-      const shim = path.join(baseDir, "t3.cmd");
-      yield* fs.writeFileString(
-        shim,
-        `@echo off\r\n"${path.join(versionsDir, "1.0.0", "t3.exe").toUpperCase()}" %*`,
-      );
-      yield* fs.writeFileString(path.join(baseDir, "runtime", "launchers"), `${shim}\n`);
+  it.effect.each(["u4.cmd", "t3.cmd"])(
+    "matches an unrecorded Windows shim %s whatever its casing",
+    (shimName) =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const { baseDir, versionsDir } = yield* setup(["1.0.0", "1.1.0"]);
+        const shim = path.join(baseDir, shimName);
+        yield* fs.writeFileString(
+          shim,
+          `@echo off\r\n"${path.join(versionsDir, "1.0.0", "t3.exe").toUpperCase()}" %*`,
+        );
 
-      const removed = yield* prunePinnedRuntimes({ baseDir, keep: ["2.0.0"] }).pipe(
-        Effect.provideService(
-          ProcessRunner.ProcessRunner,
-          lsofRunner("C:\\Windows\\explorer.exe\n"),
-        ),
-        Effect.provideService(HostProcess.Platform, "win32"),
-        Effect.provideService(HostProcess.Environment, {}),
-      );
-      assert.deepEqual(removed, ["1.1.0"]);
-    }),
+        const removed = yield* prunePinnedRuntimes({ baseDir, keep: ["2.0.0"] }).pipe(
+          Effect.provideService(
+            ProcessRunner.ProcessRunner,
+            lsofRunner("C:\\Windows\\explorer.exe\n"),
+          ),
+          Effect.provideService(HostProcess.Platform, "win32"),
+          Effect.provideService(HostProcess.Environment, { T3CODE_INSTALL_BIN_DIR: baseDir }),
+        );
+        assert.deepEqual(removed, ["1.1.0"]);
+      }),
   );
 
   it.effect.each([

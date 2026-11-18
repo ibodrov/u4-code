@@ -1392,7 +1392,7 @@ server.listen(Number(flag("--port") ?? 0), "127.0.0.1", () => {
           launcherId,
         ).pipe(Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, sshAsLocalShell));
       const runtimePid = fs
-        .readFileString(`${home}/.t3/userdata/server-runtime.json`)
+        .readFileString(`${home}/.u4/userdata/server-runtime.json`)
         .pipe(Effect.map((runtime) => Number(JSON.parse(runtime).pid)));
       const launchedPids: Array<number> = [];
       yield* Effect.addFinalizer(() =>
@@ -1608,7 +1608,7 @@ describe("SSH launch during desktop update", () => {
     (archive) =>
       Effect.gen(function* () {
         const script = yield* archive
-          ? captureLauncherFor({ archiveVersion: "1.2.3" })
+          ? captureLauncherFor({ archiveVersion: "1.2.3-u4.8" })
           : captureLauncher;
         const result = runLauncher(script, { archive, serviceServing: true, readyAt: 5_000 });
         assert.deepEqual(result.output, { remotePort: 4888, serverKind: "external" });

@@ -654,7 +654,8 @@ const shellLauncherTargets = Effect.fn("cloud.pinned_runtime.shell_launcher_targ
   const platform = yield* HostProcess.Platform;
   const environment = yield* HostProcess.Environment;
   const home = yield* HostProcess.HomeDirectory;
-  const launcherName = platform === "win32" ? "t3.cmd" : PRODUCT_CLI_COMMAND;
+  const launcherNames =
+    platform === "win32" ? [`${PRODUCT_CLI_COMMAND}.cmd`, "t3.cmd"] : [PRODUCT_CLI_COMMAND];
   const launchersFile = path.join(baseDir, PINNED_RUNTIME_DIR, PINNED_RUNTIME_LAUNCHERS_FILE);
   const recorded = (yield* fs.readFileString(launchersFile).pipe(Effect.orElseSucceed(() => "")))
     .split(/\r?\n/)
@@ -663,7 +664,9 @@ const shellLauncherTargets = Effect.fn("cloud.pinned_runtime.shell_launcher_targ
     environment["T3CODE_INSTALL_BIN_DIR"] || path.join(home, ".local", "bin"),
     ...(environment["PATH"] ?? environment["Path"] ?? "").split(platform === "win32" ? ";" : ":"),
   ].filter((directory) => path.isAbsolute(directory));
-  const found = binDirs.map((directory) => path.join(directory, launcherName));
+  const found = binDirs.flatMap((directory) =>
+    launcherNames.map((name) => path.join(directory, name)),
+  );
   const versionsDir = pinnedRuntimeVersionsDir(path, baseDir);
   const realVersionsDir = yield* fs
     .realPath(versionsDir)

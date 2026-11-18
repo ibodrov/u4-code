@@ -28,7 +28,7 @@ it.effect.each([81, 89, 96])("stages only trusted tables at supported source hea
       readonly name: string;
     }>`SELECT migration_id, name FROM effect_sql_migrations ORDER BY migration_id`;
     assert.deepStrictEqual(
-      ledger.map((row) => [row.migration_id, row.name]),
+      ledger.map((row) => [row.migration_id, row.name] as const),
       migrationManifest.filter(([id]) => id <= head),
     );
     const columns = yield* source.sql<{

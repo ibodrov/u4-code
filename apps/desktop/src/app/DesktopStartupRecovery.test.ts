@@ -247,14 +247,14 @@ it.effect("installs the build the update action downloaded, not the one it offer
           },
         },
       } as unknown as Electron.BrowserWindow;
-      const offered = updateState({ status: "available", availableVersion: "0.1.4" });
+      const offered = updateState({ status: "available", availableVersion: "0.1.4-u4.8" });
       const state = yield* DesktopState.DesktopState;
       yield* listen.pipe(
         Effect.provide(
           Layer.mergeAll(
-            FileSystem.layerNoop({ readFileString: () => Effect.succeed("0.1.3") }),
+            FileSystem.layerNoop({ readFileString: () => Effect.succeed("0.1.3-u4.8") }),
             Layer.succeed(DesktopEnvironment.DesktopEnvironment, {
-              appVersion: "0.1.3",
+              appVersion: "0.1.3-u4.8",
               stateDir: "/task/state",
               logDir: "/task/logs",
               path: { join: (...parts: string[]) => parts.join("/") },
@@ -281,7 +281,7 @@ it.effect("installs the build the update action downloaded, not the one it offer
               download: Effect.succeed({
                 accepted: true,
                 completed: true,
-                state: updateState({ status: "downloaded", downloadedVersion: "0.1.5" }),
+                state: updateState({ status: "downloaded", downloadedVersion: "0.1.5-u4.8" }),
               }),
               installPrepared: (version: string) => Deferred.succeed(installed, version),
             } as unknown as DesktopUpdates.DesktopUpdates["Service"]),
@@ -296,7 +296,7 @@ it.effect("installs the build the update action downloaded, not the one it offer
       });
       yield* Deferred.await(shown);
       navigate!({ preventDefault: () => {} }, "https://startup-recovery.invalid/update");
-      expect(yield* Deferred.await(installed)).toBe("0.1.5");
+      expect(yield* Deferred.await(installed)).toBe("0.1.5-u4.8");
     }),
   ).pipe(Effect.provide(DesktopState.layer)),
 );

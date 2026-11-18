@@ -339,7 +339,7 @@ describe("AgentScope service", () => {
         const memoryLimits = () =>
           calls
             .filter(
-              ([, verb, , slice]) => verb === "set-property" && slice === "app-t3code-agents.slice",
+              ([, verb, , slice]) => verb === "set-property" && slice === "app-u4code-agents.slice",
             )
             .map((args) => args.slice(4));
         yield* launch;
