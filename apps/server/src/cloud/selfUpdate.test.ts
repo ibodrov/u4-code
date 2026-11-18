@@ -401,12 +401,12 @@ it.layer(NodeServices.layer)("server self update", (it) => {
   it.effect("stages the runtime without asking the launcher to restart", () =>
     Effect.gen(function* () {
       const { selfUpdate, order } = yield* makeHarness();
-      expect(yield* selfUpdate.update({ targetVersion: "1.1.0", stageOnly: true })).toEqual({
-        targetVersion: "1.1.0",
+      expect(yield* selfUpdate.update({ targetVersion: "1.1.0-u4.8", stageOnly: true })).toEqual({
+        targetVersion: "1.1.0-u4.8",
         method: "boot-service",
       });
       expect(order).toEqual(["download", "extract", "preflight"]);
-      expect((yield* selfUpdate.update({ targetVersion: "1.1.0" })).updateId).toBe("launcher-id");
+      expect((yield* selfUpdate.update({ targetVersion: "1.1.0-u4.8" })).updateId).toBe("launcher-id");
       expect(order).toEqual(["download", "extract", "preflight", "preflight", "accept"]);
     }),
   );

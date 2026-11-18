@@ -5,6 +5,7 @@ import {
   type EnvironmentConnectReachability,
   formatConnectReachable,
 } from "@t3tools/contracts";
+import { PRODUCT_BASE_NAME, PRODUCT_CLI_COMMAND } from "@t3tools/shared/productIdentity";
 import { readTailscaleExitNode, type TailscaleExitNode } from "@t3tools/tailscale";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -155,7 +156,7 @@ export function classifyReachability(
     return fail(
       "dns_failed",
       "The T3 Connect address no longer points to this machine's tunnel (Cloudflare error 1016). T3 Connect may have removed this environment.",
-      "Link this environment again. Turn T3 Connect off and on in Settings > Sharing & access, or run `t3 connect link` and then restart T3 Code.",
+      `Link this environment again. Turn T3 Connect off and on in Settings > Sharing & access, or run \`${PRODUCT_CLI_COMMAND} connect link\` and then restart ${PRODUCT_BASE_NAME}.`,
     );
   }
   if (status !== null) {

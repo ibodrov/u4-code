@@ -1,6 +1,7 @@
 import {
   PRODUCT_BOOT_SERVICE_LAUNCHD_LABEL,
   PRODUCT_BOOT_SERVICE_NAME,
+  PRODUCT_CLI_COMMAND,
 } from "@t3tools/shared/productIdentity";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Config from "effect/Config";
@@ -659,8 +660,8 @@ type BootServiceProblem = typeof BootServiceProblem.Type;
 export function formatBootServiceProblem(
   problem: BootServiceProblem,
   commands: { readonly install: string; readonly restart: string } = {
-    install: "t3 service install",
-    restart: "t3 service restart",
+    install: `${PRODUCT_CLI_COMMAND} service install`,
+    restart: `${PRODUCT_CLI_COMMAND} service restart`,
   },
 ): string {
   switch (problem) {
