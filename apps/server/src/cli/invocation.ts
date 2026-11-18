@@ -189,7 +189,8 @@ export const resolveHostCliCommand = Effect.fn("invocation.resolveHostCliCommand
     // An empty subcommand names the root command.
     [prefix.trimEnd(), ...args.map((arg) => hostShellWord(platform, arg))].join(" ");
   const command = yield* resolveCliCommand(subcommand);
-  if (command !== `${PRODUCT_CLI_COMMAND} ${subcommand}`) return { command: withArgs(command), launcher: false };
+  if (command !== `${PRODUCT_CLI_COMMAND} ${subcommand}`)
+    return { command: withArgs(command), launcher: false };
   const onPath = yield* resolveCommandPath(PRODUCT_CLI_COMMAND);
   if (onPath !== null) {
     const shim = (yield* HostProcess.Environment).T3CODE_CLI_PATH?.trim();

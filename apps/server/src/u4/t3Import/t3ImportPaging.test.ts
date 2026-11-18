@@ -114,11 +114,13 @@ it.effect("pages full tuples and oversized singletons without skipping or repeat
     const pre095Raw = new Map(whole.raw);
     pre095Raw.set(
       "turn_items",
-      whole.raw.get("turn_items")!.map((row) =>
-        Object.fromEntries(
-          Object.entries(row).filter(([column]) => column !== "inline_work_output"),
+      whole.raw
+        .get("turn_items")!
+        .map((row) =>
+          Object.fromEntries(
+            Object.entries(row).filter(([column]) => column !== "inline_work_output"),
+          ),
         ),
-      ),
     );
     const pre095Digests = contentDigests({ ...whole, raw: pre095Raw }, new Map());
     const streamed = yield* streamDigests(
@@ -131,9 +133,9 @@ it.effect("pages full tuples and oversized singletons without skipping or repeat
     assert.deepStrictEqual(streamed, contentDigests(whole, new Map()));
     assert.deepStrictEqual(streamed, pre095Digests);
     assert.deepStrictEqual(contentDigests(whole, new Map()), pre095Digests);
-    const originalPayload = whole.raw.get("turn_items")!.find(
-      (row) => row.turn_item_id === members[0]! + ":same",
-    )!.payload_json;
+    const originalPayload = whole.raw
+      .get("turn_items")!
+      .find((row) => row.turn_item_id === members[0]! + ":same")!.payload_json;
     yield* source.sql`UPDATE orchestration_v2_projection_turn_items SET payload_json = json_set(payload_json, '$.text', 'Changed history payload') WHERE turn_item_id = ${members[0]! + ":same"}`;
     const changedStreamed = yield* streamDigests(
       source.sql,

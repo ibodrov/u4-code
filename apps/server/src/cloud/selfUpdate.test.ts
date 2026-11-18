@@ -238,7 +238,9 @@ it.layer(NodeServices.layer)("server self update", (it) => {
         launcherProtocol: 3,
       });
       yield* TestClock.setTime(5_000);
-      expect((yield* selfUpdate.update({ targetVersion: "1.1.0-u4.8" })).updateId).toBe("launcher-id");
+      expect((yield* selfUpdate.update({ targetVersion: "1.1.0-u4.8" })).updateId).toBe(
+        "launcher-id",
+      );
       expect(preflightProtocols).toEqual(["3"]);
       // That launcher holds no lock between its servers; SSH launches wait on this marker instead.
       const fs = yield* FileSystem.FileSystem;
@@ -406,7 +408,9 @@ it.layer(NodeServices.layer)("server self update", (it) => {
         method: "boot-service",
       });
       expect(order).toEqual(["download", "extract", "preflight"]);
-      expect((yield* selfUpdate.update({ targetVersion: "1.1.0-u4.8" })).updateId).toBe("launcher-id");
+      expect((yield* selfUpdate.update({ targetVersion: "1.1.0-u4.8" })).updateId).toBe(
+        "launcher-id",
+      );
       expect(order).toEqual(["download", "extract", "preflight", "preflight", "accept"]);
     }),
   );

@@ -187,16 +187,17 @@ class WrappersTest(unittest.TestCase):
             root = Path(temporary)
             env = android.private_env(root / "work", Path("/node"), Path("/jdk"), Path("/sdk"))
             launcher = env[android.NATIVE_LAUNCHERS[0]].split(";")
-            fixture = "import json,os,socket,sys; s=socket.socket(socket.AF_UNIX); s.connect(sys.argv[1]); s.sendall((json.dumps([os.getpid(),sys.argv[3:]])+'\\n').encode()); s.recv(1); sys.exit(int(sys.argv[2]))"
+            socket_name = root.name
+            fixture = "import json,os,socket,sys; s=socket.socket(socket.AF_UNIX); s.connect(chr(0) + sys.argv[1]); s.sendall((json.dumps([os.getpid(),sys.argv[3:]])+'\\n').encode()); s.recv(1); sys.exit(int(sys.argv[2]))"
             owner = android.owned_module.OwnedProcesses()
             processes = []
             child_pids = []
             with socket.socket(socket.AF_UNIX) as server:
-                server.bind(str(root / "socket"))
+                server.bind("\0" + socket_name)
                 server.listen()
 
                 def start(code=0):
-                    process = subprocess.Popen([*launcher, sys.executable, "-c", fixture, str(root / "socket"), str(code), "a b", ";$()", ""], env=env)
+                    process = subprocess.Popen([*launcher, sys.executable, "-c", fixture, socket_name, str(code), "a b", ";$()", ""], env=env)
                     processes.append(process)
                     return process
 

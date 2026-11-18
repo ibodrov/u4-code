@@ -352,7 +352,9 @@ it.layer(NodeServices.layer)("manual server installation ownership", (it) => {
       yield* fs.rename(launcher, moved);
       const searchPath = movedBin + ":" + path.join(root, "bin");
       expect(yield* fs.exists(launcher)).toBe(false);
-      expect(yield* fs.readFileString(path.join(baseDir, "runtime/launchers"))).toBe(launcher + "\n");
+      expect(yield* fs.readFileString(path.join(baseDir, "runtime/launchers"))).toBe(
+        launcher + "\n",
+      );
       expect(yield* fs.readFileString(moved)).toBe(script);
       expect(yield* resolve(executable, searchPath)).toEqual({
         kind: "t3-launcher",

@@ -34,7 +34,10 @@ it.effect.each([81, 89, 96])("stages only trusted tables at supported source hea
     const columns = yield* source.sql<{
       readonly name: string;
     }>`SELECT name FROM pragma_table_xinfo('orchestration_v2_projection_turn_items')`;
-    assert.strictEqual(columns.some((column) => column.name === "inline_work_output"), head === 96);
+    assert.strictEqual(
+      columns.some((column) => column.name === "inline_work_output"),
+      head === 96,
+    );
     const stage = yield* T3ImportStaging.T3ImportStaging;
     const snapshot = yield* stage.open({
       sourceHome: source.home,
@@ -51,8 +54,14 @@ it.effect.each([81, 89, 96])("stages only trusted tables at supported source hea
       readonly payload_json: string;
       readonly inline_work_output: number;
     }>`SELECT payload_json, inline_work_output FROM orchestration_v2_projection_turn_items ORDER BY turn_item_id`;
-    assert.deepStrictEqual(items.map((row) => JSON.parse(row.payload_json)), [item]);
-    assert.deepStrictEqual(items.map((row) => row.inline_work_output), [0]);
+    assert.deepStrictEqual(
+      items.map((row) => JSON.parse(row.payload_json)),
+      [item],
+    );
+    assert.deepStrictEqual(
+      items.map((row) => row.inline_work_output),
+      [0],
+    );
     const rows = yield* snapshot.sql<{
       readonly thread_id: string;
     }>`SELECT thread_id FROM orchestration_v2_projection_threads`;
