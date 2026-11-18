@@ -158,7 +158,7 @@ def build(args):
     need(args.version == request["version"] and args.source_sha == request["sourceSha"] and args.source_tree == request["sourceTree"], "reservation/source identity mismatch")
     need(args.code == request["testCode" if args.role == "test" else "releaseCode"], "versionCode not reserved for role")
     node = str(node_bin / "node")
-    bootstrap_env = {"PATH": f"{node_bin}:/usr/bin:/bin", "HOME": str(output), "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": "/dev/null"}
+    bootstrap_env = {"PATH": f"{node_bin}:/usr/bin:/bin", "HOME": str(output), "TMPDIR": str(output), "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": "/dev/null"}
     reservation = json.loads(capture([node, str(HERE / "finalize.mjs"), "reserve", "--record", args.record, "--request-file", args.request_file], bootstrap_env))
     need(reservation["stage"] in ["reserved", "unsigned", "signed", "accepted"], "reservation cannot build")
     final_name = f"U4-Code-{args.version}-arm64-v8a" + ("-t1" if args.role == "test" else "") + ".unsigned.apk"

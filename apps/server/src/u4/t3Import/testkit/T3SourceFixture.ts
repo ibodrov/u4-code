@@ -13,6 +13,7 @@ import { runMigrations } from "../../../persistence/Migrations.ts";
 import * as ProjectionStore from "../../../orchestration-v2/ProjectionStore.ts";
 
 const decodeDomainEvent = Schema.decodeUnknownEffect(C.OrchestrationV2DomainEventJson);
+const encodeUpdatedAt = Schema.encodeEffect(Schema.DateTimeUtcFromString);
 export const FIXTURE_TIME = "2026-10-01T00:00:00.000Z";
 export const sourceThread = (id: string, extra: Record<string, unknown> = {}) => ({
   id,
@@ -124,9 +125,7 @@ export const createSource = Effect.fn("T3SourceFixture.create")(function* (
     // Migration 95 added a derived column to the current projection writer.
     if (head < 95 && event.type === "turn-item.updated") {
       const payloadJson = yield* ProjectionStore.encodeTurnItemPayload(event.payload);
-      const updatedAt = yield* Schema.encodeEffect(Schema.DateTimeUtcFromString)(
-        event.payload.updatedAt,
-      );
+      const updatedAt = yield* encodeUpdatedAt(event.payload.updatedAt);
       yield* sql`
         INSERT INTO orchestration_v2_projection_turn_items (
           turn_item_id,
