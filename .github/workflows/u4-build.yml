@@ -1,0 +1,117 @@
+name: Build U4 candidates
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: U4 version, such as 0.1.10-u4.12
+        required: true
+        type: string
+      android_floor:
+        description: Public Android code floor for this candidate
+        required: true
+        type: string
+      android_test_code:
+        description: Android test versionCode above the floor
+        required: true
+        type: string
+      android_release_code:
+        description: Android production versionCode above the test code
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: u4-on-demand-build
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: github.repository == 'ibodrov/u4-code' && github.ref == 'refs/heads/main'
+    name: Build ${{ matrix.artifact }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        artifact: [appimage, android]
+    timeout-minutes: 150
+    env:
+      U4_VERSION: ${{ inputs.version }}
+      U4_ANDROID_FLOOR: ${{ inputs.android_floor }}
+      U4_ANDROID_TEST_CODE: ${{ inputs.android_test_code }}
+      U4_ANDROID_RELEASE_CODE: ${{ inputs.android_release_code }}
+    steps:
+      - name: Verify exact dispatch branch
+        run: |
+          if [[ $GITHUB_REF != refs/heads/main || $GITHUB_REPOSITORY != ibodrov/u4-code ]]; then
+            echo 'Dispatch this workflow from ibodrov/u4-code:main.' >&2
+            exit 1
+          fi
+
+      - name: Check out dispatch commit
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: "26.13.1"
+          package-manager-cache: false
+
+      - name: Set up Android JDK
+        if: matrix.artifact == 'android'
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: temurin
+          java-version: "17.0.14"
+
+      - name: Make room for the Android toolchain and build
+        if: matrix.artifact == 'android'
+        run: |
+          [[ $RUNNER_ENVIRONMENT == github-hosted && $ANDROID_HOME == /usr/local/lib/android/sdk ]]
+          df -h -- "$RUNNER_TEMP"
+          sudo rm -rf -- /usr/share/dotnet /opt/ghc "$ANDROID_HOME/emulator" "$ANDROID_HOME/system-images"
+          for ndk in "$ANDROID_HOME"/ndk/*; do
+            [[ -d $ndk && ${ndk##*/} != 27.1.12297006 ]] || continue
+            sudo rm -rf -- "$ndk"
+          done
+
+      - name: Set up build tools
+        env:
+          U4_ARTIFACT: ${{ matrix.artifact }}
+        run: |
+          node_bin=$(dirname "$(command -v node)")
+          printf 'U4_NODE_BIN=%s\n' "$node_bin" >> "$GITHUB_ENV"
+          if [[ $U4_ARTIFACT == android ]]; then
+            npm install --global --prefix "${node_bin%/bin}" --registry https://registry.npmjs.org pnpm@12.14.0
+            java_path="$RUNNER_TEMP/17.0.14-tem"
+            ln -s -- "$JAVA_HOME" "$java_path"
+            printf 'U4_JAVA_HOME=%s\n' "$java_path" >> "$GITHUB_ENV"
+            sdk_manager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+            "$sdk_manager" --install 'build-tools;37.0.0' 'platforms;android-37.0' 'ndk;27.1.12297006' 'cmake;3.22.1'
+          else
+            podman info >/dev/null
+          fi
+          df -h -- "$RUNNER_TEMP"
+
+      - name: Prepare source and candidate inputs
+        run: bash packaging/u4/release/actions-build.sh prepare
+
+      - name: Build and encrypt candidate
+        env:
+          U4_ARTIFACT: ${{ matrix.artifact }}
+        run: bash packaging/u4/release/actions-build.sh "$U4_ARTIFACT"
+
+      - name: Upload encrypted candidate
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: u4-${{ matrix.artifact }}-${{ inputs.version }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/u4-build-${{ github.run_id }}-${{ github.run_attempt }}/upload/${{ matrix.artifact }}.tar.gz.gpg
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 1
