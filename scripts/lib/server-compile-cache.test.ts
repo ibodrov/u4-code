@@ -11,6 +11,7 @@ it.each([
   { platform: "linux", hostArch: "x64", arch: 3, reason: "unexecutable target linux/arm64" },
   { platform: "linux", hostArch: "arm64", arch: 1, reason: "unexecutable target linux/x64" },
   { platform: "darwin", hostArch: "arm64", arch: 3, reason: "untrusted bundle", untrusted: true },
+  { platform: "darwin", hostArch: "arm64", arch: 1, reason: "darwin/x64: x86_64 probe failed" },
 ])(
   "skips cache generation for $reason",
   async ({ platform, hostArch, arch, reason, untrusted }) => {
@@ -22,7 +23,11 @@ it.each([
       process.execPath,
       [
         "-e",
-        `Object.defineProperty(process, "platform", { value: ${JSON.stringify(platform)} });
+        `require("node:child_process").spawnSync = (executable, args) => {
+         require("node:assert/strict").deepEqual([executable, ...args], ["/usr/bin/arch", "-x86_64", "/usr/bin/true"]);
+         return { status: 1 };
+       };
+       Object.defineProperty(process, "platform", { value: ${JSON.stringify(platform)} });
        Object.defineProperty(process, "arch", { value: ${JSON.stringify(hostArch)} });
        require(${JSON.stringify(hook)})({ electronPlatformName: ${JSON.stringify(platform)}, arch: ${arch} }).catch(error => { console.error(error); process.exitCode = 1; });`,
       ],
@@ -36,7 +41,7 @@ it.each([
   },
 );
 
-// macOS runs on an ARM64 host to exercise the Rosetta build-host check.
+// macOS runs on an ARM64 host with Rosetta to exercise the Rosetta build-host check.
 it.each([
   {
     platform: "darwin",
@@ -77,6 +82,7 @@ it.each([
       const childProcess = require("node:child_process");
       const spawn = childProcess.spawnSync;
       childProcess.spawnSync = (executable, args, options) => {
+        if (executable === "/usr/bin/arch" && args[0] === "-x86_64") return { status: 0 };
         require("node:assert/strict").equal(executable, ${JSON.stringify(NodePath.join(root, layout.executable))});
         return spawn(process.execPath, args, options);
       };

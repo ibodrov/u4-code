@@ -283,7 +283,7 @@ module declarations without launching server services; worker-only modules compi
 AppImage backends use temporary links for each mount and remove them on normal exit. Later launches
 reclaim abandoned cache directories whose links point to gone mounts; AppImage main-process caching
 stays disabled. macOS x64 builds on ARM64 hosts run the packaged x64 Electron
-under Rosetta to generate the cache. Other cross-platform and cross-architecture builds skip
+under Rosetta to generate the cache, and skip it when Rosetta is not installed. Other cross-platform and cross-architecture builds skip
 generation explicitly. CLI, SEA and WSL runtimes keep their existing behavior.
 
 Electron's Node 24 cache has no read-only option and includes the producer UID in its directory

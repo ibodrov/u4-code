@@ -16,15 +16,21 @@ module.exports = async ({ appOutDir, electronPlatformName, arch, packager }) => 
     return;
   }
   const targetArch = ["ia32", "x64", "armv7l", "arm64", "universal"][arch];
-  const runsWithRosetta =
+  const needsRosetta =
     electronPlatformName === "darwin" &&
     process.platform === "darwin" &&
     process.arch === "arm64" &&
     targetArch === "x64";
-  if (
-    electronPlatformName !== process.platform ||
-    (targetArch !== process.arch && !runsWithRosetta)
-  ) {
+  if (needsRosetta) {
+    const probe = spawnSync("/usr/bin/arch", ["-x86_64", "/usr/bin/true"], { timeout: 10000 });
+    if (probe.status !== 0) {
+      console.log(
+        `[server-compile-cache] Skipping darwin/x64: x86_64 probe failed (${probe.error || `status ${probe.status}`}); install Rosetta with softwareupdate --install-rosetta`,
+      );
+      return;
+    }
+  }
+  if (electronPlatformName !== process.platform || (targetArch !== process.arch && !needsRosetta)) {
     console.log(
       `[server-compile-cache] Skipping unexecutable target ${electronPlatformName}/${targetArch}`,
     );
