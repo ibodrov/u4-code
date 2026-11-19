@@ -3567,24 +3567,66 @@ export class MacPackagedAppMissingError extends Schema.TaggedError<MacPackagedAp
   }
 }
 
+const findMacPackagedApps = Effect.fn("desktopArtifact.findMacPackagedApps")(function* (
+  stageDistDir: string,
+) {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const appPaths: string[] = [];
+  for (const entry of yield* fs.readDirectory(stageDistDir)) {
+    if (!entry.startsWith("mac")) continue;
+    const outputDir = path.join(stageDistDir, entry);
+    const apps = yield* fs.readDirectory(outputDir).pipe(Effect.orElseSucceed(() => []));
+    for (const app of apps) {
+      if (app.endsWith(".app")) appPaths.push(path.join(outputDir, app));
+    }
+  }
+  if (appPaths.length === 0) {
+    return yield* new MacPackagedAppMissingError({ stageDistDir });
+  }
+  return appPaths;
+});
+
+export class MacDeveloperIdSignatureMissingError extends Schema.TaggedError<MacDeveloperIdSignatureMissingError>()(
+  "MacDeveloperIdSignatureMissingError",
+  { appPath: Schema.String, output: Schema.String },
+) {
+  override get message(): string {
+    return `Developer ID signature verification failed for ${this.appPath}. Without a Developer ID Application identity in the keychain or CSC_LINK, --signed leaves the app unsigned.\n${this.output}`;
+  }
+}
+
+// Apple's designated requirement for Developer ID Application code (TN3127).
+const MAC_DEVELOPER_ID_REQUIREMENT =
+  "=anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] exists and certificate leaf[field.1.2.840.113635.100.6.1.13] exists";
+
+// With a custom `sign` hook, electron-builder skips signing without an error when it finds no identity.
+export const verifyMacDeveloperIdSignature = Effect.fn(
+  "desktopArtifact.verifyMacDeveloperIdSignature",
+)(function* (input: { readonly stageDistDir: string }) {
+  for (const appPath of yield* findMacPackagedApps(input.stageDistDir)) {
+    const result = yield* spawnAndCollectOutput(
+      ChildProcess.make("codesign", [
+        "--verify",
+        "--strict",
+        "--all-architectures",
+        "-R",
+        MAC_DEVELOPER_ID_REQUIREMENT,
+        appPath,
+      ]),
+    );
+    if (result.exitCode !== 0) {
+      return yield* new MacDeveloperIdSignatureMissingError({ appPath, output: result.stderr });
+    }
+  }
+});
+
 export const validateMacPackagedPayload = Effect.fn("desktopArtifact.validateMacPackagedPayload")(
   function* (input: { readonly stageDistDir: string; readonly verbose?: boolean }) {
-    const fs = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
-    const asarPaths: string[] = [];
-    for (const entry of yield* fs.readDirectory(input.stageDistDir)) {
-      if (!entry.startsWith("mac")) continue;
-      const outputDir = path.join(input.stageDistDir, entry);
-      const apps = yield* fs.readDirectory(outputDir).pipe(Effect.orElseSucceed(() => []));
-      for (const app of apps) {
-        if (app.endsWith(".app")) {
-          asarPaths.push(path.join(outputDir, app, "Contents/Resources/app.asar"));
-        }
-      }
-    }
-    if (asarPaths.length === 0) {
-      return yield* new MacPackagedAppMissingError({ stageDistDir: input.stageDistDir });
-    }
+    const asarPaths = (yield* findMacPackagedApps(input.stageDistDir)).map((app) =>
+      path.join(app, "Contents/Resources/app.asar"),
+    );
     for (const asarPath of asarPaths) {
       yield* verifyPackagedBundleIsSelfContained({ asarPath, verbose: input.verbose ?? false });
     }
@@ -4126,6 +4168,9 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
     options.arch === (yield* HostProcess.Architecture)
   ) {
     yield* validateLinuxPackagedPayload({ stageDistDir, verbose: options.verbose });
+  }
+  if (options.platform === "mac" && options.signed) {
+    yield* verifyMacDeveloperIdSignature({ stageDistDir });
   }
   // x64 builds on arm64 runners; the arm64 check covers the shared JS bundle.
   if (options.platform === "mac" && options.arch === "arm64" && hostPlatform === "darwin") {

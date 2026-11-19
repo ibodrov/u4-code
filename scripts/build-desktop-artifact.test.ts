@@ -49,10 +49,12 @@ import {
   copyDirectoryPreservingSymlinks,
   LinuxBrowserSecretHostError,
   LinuxPackagedAppMissingError,
+  MacDeveloperIdSignatureMissingError,
   MacPackagedAppMissingError,
   stageBrowserSecret,
   validateLinuxPackagedPayload,
   validateMacPackagedPayload,
+  verifyMacDeveloperIdSignature,
   validateWindowsPackagedPayload,
   verifyPackagedBundleIsSelfContained,
   WindowsPrimaryNativeProbeError,
@@ -1526,6 +1528,38 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
       }),
     ),
   );
+
+  it.effect("rejects a signed macOS app that lacks a Developer ID signature", () => {
+    const verifyExitCodes = new Map<string, number>();
+    const spawnerLayer = Layer.succeed(
+      ChildProcessSpawner.ChildProcessSpawner,
+      ChildProcessSpawner.make((command) => {
+        const { command: executable, args } = command as unknown as {
+          readonly command: string;
+          readonly args: ReadonlyArray<string>;
+        };
+        assert.strictEqual(executable, "codesign");
+        assert.includeMembers([...args], ["--verify", "--strict", "--all-architectures", "-R"]);
+        assert.include(args.at(-2), "certificate leaf[field.1.2.840.113635.100.6.1.13] exists");
+        return Effect.succeed(mockProcess(verifyExitCodes.get(args.at(-1) ?? "") ?? 0));
+      }),
+    );
+    return Effect.scoped(
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const stageDistDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-mac-sign-test-" });
+        const appPath = NodePath.join(stageDistDir, "mac-arm64", "U4 Code.app");
+        yield* fs.makeDirectory(appPath, { recursive: true });
+
+        verifyExitCodes.set(appPath, 3);
+        const error = yield* verifyMacDeveloperIdSignature({ stageDistDir }).pipe(Effect.flip);
+        assert.instanceOf(error, MacDeveloperIdSignatureMissingError);
+
+        verifyExitCodes.set(appPath, 0);
+        yield* verifyMacDeveloperIdSignature({ stageDistDir });
+      }),
+    ).pipe(Effect.provide(spawnerLayer));
+  });
 
   it.effect("rejects a macOS app without app.asar", () =>
     Effect.scoped(
