@@ -275,6 +275,26 @@ describe("DesktopLifecycle", () => {
       expected: { via: "helper", execPath: "/home/user/Applications/U4-Code.AppImage" },
     },
     {
+      label: "an AppImage whose APPDIR repeats a separator",
+      executablePath: "/tmp/.mount_U4-CodA1b2C3/u4code",
+      appImagePath: Option.some("/home/user/Applications/U4-Code.AppImage"),
+      appDir: "/tmp//.mount_U4-CodA1b2C3",
+      helperStarts: true,
+      expected: { via: "helper", execPath: "/home/user/Applications/U4-Code.AppImage" },
+    },
+    {
+      label: "an AppImage started with --appimage-extract-and-run",
+      executablePath: "/tmp/appimage_extracted_0123abcd/u4code",
+      appImagePath: Option.some("/home/user/Applications/U4-Code.AppImage"),
+      appDir: "/tmp/appimage_extracted_0123abcd",
+      helperStarts: true,
+      expected: {
+        via: "helper",
+        execPath: "/home/user/Applications/U4-Code.AppImage",
+        args: ["--appimage-extract-and-run", "--no-sandbox"],
+      },
+    },
+    {
       label: "an AppImage whose helper cannot start",
       executablePath: "/tmp/.mount_U4-CodA1b2C3/u4code",
       appImagePath: Option.some("/home/user/Applications/U4-Code.AppImage"),
@@ -336,7 +356,7 @@ describe("DesktopLifecycle", () => {
         ),
       );
 
-      assert.deepEqual(relaunch, { ...launch.expected, args: ["--no-sandbox"] });
+      assert.deepEqual(relaunch, { args: ["--no-sandbox"], ...launch.expected });
     }),
   );
 
