@@ -5,6 +5,7 @@ import {
   settleAuthorizationPage,
   settleHandoffAuthorizationPage,
   settleProviderInstall,
+  signInReturnUrl,
 } from "./CodexSetupSection.logic";
 
 const install = (overrides: Partial<ProviderInstallState>) =>
@@ -117,5 +118,27 @@ describe("settleAuthorizationPage", () => {
       }),
     ).toBe("https://a");
     expect(settleHandoffAuthorizationPage({ phase: "finished", profile: {} as never })).toBeNull();
+  });
+});
+
+describe("signInReturnUrl", () => {
+  it.each([
+    ["u4code://app/#/settings/providers", true, "u4code://app/settings/providers"],
+    [
+      "u4code://app/#/settings/providers?instanceId=other",
+      true,
+      "u4code://app/settings/providers?instanceId=other",
+    ],
+    ["u4code-dev://app/#/welcome", true, "u4code-dev://app/welcome#agents:env-1"],
+    ["u4code://app/#/settings/general?tab=1", true, "u4code://app/settings/general?tab=1"],
+    ["u4code://app/", true, "u4code://app/"],
+    [
+      "https://app.t3.codes/settings/providers",
+      false,
+      "https://app.t3.codes/settings/providers?instanceId=work",
+    ],
+    ["http://localhost:3000/welcome", false, "http://localhost:3000/welcome#agents:env-1"],
+  ])("returns %s (hash history: %s) to %s", (href, hashHistory, expected) => {
+    expect(signInReturnUrl(href, hashHistory, "env-1", "work").toString()).toBe(expected);
   });
 });

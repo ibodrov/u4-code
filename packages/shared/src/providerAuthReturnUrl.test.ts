@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { providerAuthReturnUrl } from "./providerAuthReturnUrl.ts";
+import { providerAuthReturnAppPath, providerAuthReturnUrl } from "./providerAuthReturnUrl.ts";
 
 describe("provider auth return destinations", () => {
   it.each(["u4code", "u4code-dev"])(
@@ -11,6 +11,9 @@ describe("provider auth return destinations", () => {
       expect(
         providerAuthReturnUrl(`${scheme}://app/settings/providers?instanceId=work&code=secret`),
       ).toBe(`${scheme}://app/settings/providers?instanceId=work`);
+      expect(
+        providerAuthReturnAppPath(`${scheme}://app/welcome?code=secret#agents:machine-id`),
+      ).toBe("/welcome#agents:machine-id");
     },
   );
   it.each([
@@ -18,4 +21,8 @@ describe("provider auth return destinations", () => {
     "t3code://app/welcome/../evil",
     "https://attacker.example/welcome",
   ])("rejects %s", (url) => expect(providerAuthReturnUrl(url)).toBeUndefined());
+  it.each(["http://localhost:3000/settings/providers", "https://app.t3.codes/welcome"])(
+    "leaves web return address %s to the browser",
+    (url) => expect(providerAuthReturnAppPath(url)).toBeNull(),
+  );
 });

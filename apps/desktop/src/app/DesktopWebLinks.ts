@@ -28,6 +28,7 @@ const make = Effect.gen(function* () {
   const desktopWindow = yield* DesktopWindow.DesktopWindow;
   const pending: Array<string> = [];
   let listening: Electron.WebContents | null = null;
+  let rendererHasListened = false;
   let detachListening: (() => void) | null = null;
 
   const stopListening = () => {
@@ -55,6 +56,7 @@ const make = Effect.gen(function* () {
     if (listening === webContents) return;
     stopListening();
     listening = webContents;
+    rendererHasListened = true;
     const onNavigation = (
       event: Electron.Event<Electron.WebContentsDidStartNavigationEventParams>,
     ) => {
@@ -71,11 +73,13 @@ const make = Effect.gen(function* () {
   });
 
   return DesktopWebLinks.of({
-    receive: Effect.fn("DesktopWebLinks.receive")(function (url) {
-      return Effect.suspend(() => {
-        pending.push(url);
-        return flush;
-      });
+    receive: Effect.fn("DesktopWebLinks.receive")(function* (url) {
+      pending.push(url);
+      yield* flush;
+      // Until a renderer first listens, startup is still opening the window and its protocol.
+      if (pending.length > 0 && rendererHasListened) {
+        yield* desktopWindow.activate.pipe(Effect.ignore);
+      }
     }),
     setRendererReady: Effect.fn("DesktopWebLinks.setRendererReady")(function (ready) {
       return ready ? startListening : Effect.sync(stopListening);

@@ -75,4 +75,31 @@ describe("DesktopWebLinks", () => {
       assert.deepStrictEqual(sent, ["https://example.com/during-reload"]);
     }).pipe(Effect.provide(layer));
   });
+
+  it.effect(
+    "requests a window for a held link once a renderer has listened, not during launch",
+    () => {
+      const { sent, revealed, layer, reload } = makeWindow();
+      return Effect.gen(function* () {
+        const webLinks = yield* DesktopWebLinks.DesktopWebLinks;
+        yield* webLinks.receive("u4code://app/settings/providers?instanceId=launch");
+        assert.strictEqual(revealed.length, 0);
+
+        yield* webLinks.setRendererReady(true);
+        assert.deepStrictEqual(sent, ["u4code://app/settings/providers?instanceId=launch"]);
+        assert.strictEqual(revealed.length, 1);
+
+        reload();
+        yield* webLinks.receive("u4code://app/settings/providers?instanceId=closed");
+        assert.strictEqual(revealed.length, 2);
+        assert.strictEqual(sent.length, 1);
+
+        yield* webLinks.setRendererReady(true);
+        assert.deepStrictEqual(sent, [
+          "u4code://app/settings/providers?instanceId=launch",
+          "u4code://app/settings/providers?instanceId=closed",
+        ]);
+      }).pipe(Effect.provide(layer));
+    },
+  );
 });

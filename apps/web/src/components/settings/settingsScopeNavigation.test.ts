@@ -9,7 +9,11 @@ import {
 import { describe, expect, it } from "vite-plus/test";
 
 import { resolveSettingsScope } from "./settingsScope";
-import { retainSettingsScope, validateSettingsRouteSearch } from "./settingsScopeNavigation";
+import {
+  exactScopeNavigation,
+  retainSettingsScope,
+  validateSettingsRouteSearch,
+} from "./settingsScopeNavigation";
 
 import { validateScheduledTasksSearch } from "./scheduledTasksSettings.logic";
 
@@ -169,6 +173,32 @@ describe("settings scope navigation", () => {
     });
     await router.navigate({ to: "/settings/general", hash: "" });
     expect(router.state.location.search).toEqual({ machine: "provider-server" });
+  });
+
+  it.each([
+    ["/settings/providers", {}],
+    [
+      "/settings/providers?machine=remote-server&instanceId=work",
+      { machine: "remote-server", instanceId: "work" },
+    ],
+  ])("returns to %s exactly, not to the scope selected since", async (appPath, search) => {
+    const router = createSettingsRouter("/settings/providers?machine=other");
+    await router.load();
+    await router.navigate(exactScopeNavigation(appPath));
+    expect(router.state.location.pathname).toBe("/settings/providers");
+    expect(router.state.location.search).toEqual(search);
+  });
+
+  it("returns to a router-written provider address without re-encoding its values", async () => {
+    const router = createSettingsRouter();
+    await router.navigate({
+      to: "/settings/providers",
+      search: { instanceId: ProviderInstanceId.make("true") },
+    });
+    const returnPath = router.state.location.href;
+    await router.navigate(exactScopeNavigation(returnPath));
+    expect(router.state.location.search).toEqual({ instanceId: "true" });
+    expect(router.state.matches.at(-1)?.status).toBe("success");
   });
 
   it("preserves the environment from an initially loaded legacy provider URL", async () => {
