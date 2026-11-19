@@ -7,6 +7,8 @@ import * as Scope from "effect/Scope";
 
 import * as Electron from "electron";
 
+import * as LinuxRelaunch from "./LinuxRelaunch.ts";
+
 export interface ElectronAppMetadata {
   readonly appVersion: string;
   readonly appPath: string;
@@ -173,9 +175,17 @@ export const make = ElectronApp.of({
       Electron.app.exit(code);
     });
   }),
-  relaunch: Effect.fn("ElectronApp.relaunch")(function (options) {
-    return Effect.sync(() => {
-      Electron.app.relaunch(options);
+  relaunch: Effect.fn("ElectronApp.relaunch")(function* (options) {
+    const platform = yield* HostProcess.Platform;
+    yield* Effect.sync(() => {
+      const relaunched =
+        platform === "linux" &&
+        LinuxRelaunch.relaunchAfterExit({
+          pid: process.pid,
+          execPath: options.execPath ?? process.execPath,
+          args: options.args ?? process.argv.slice(1),
+        });
+      if (!relaunched) Electron.app.relaunch(options);
     });
   }),
   setPath: Effect.fn("ElectronApp.setPath")(function (name, path) {
