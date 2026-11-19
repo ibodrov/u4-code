@@ -259,6 +259,22 @@ describe("DesktopLifecycle", () => {
       expected: { via: "electron", execPath: "/opt/U4 Code/u4code" },
     },
     {
+      label: "an installed executable with an empty APPDIR",
+      executablePath: "/opt/U4 Code/u4code",
+      appImagePath: Option.some("/home/user/Applications/Other.AppImage"),
+      appDir: "",
+      helperStarts: true,
+      expected: { via: "electron", execPath: "/opt/U4 Code/u4code" },
+    },
+    {
+      label: "an AppImage whose APPDIR ends in a slash",
+      executablePath: "/tmp/.mount_U4-CodA1b2C3/u4code",
+      appImagePath: Option.some("/home/user/Applications/U4-Code.AppImage"),
+      appDir: "/tmp/.mount_U4-CodA1b2C3/",
+      helperStarts: true,
+      expected: { via: "helper", execPath: "/home/user/Applications/U4-Code.AppImage" },
+    },
+    {
       label: "an AppImage whose helper cannot start",
       executablePath: "/tmp/.mount_U4-CodA1b2C3/u4code",
       appImagePath: Option.some("/home/user/Applications/U4-Code.AppImage"),

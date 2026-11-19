@@ -33,19 +33,24 @@ export const relaunchAfterExit = (input: {
   readonly execPath: string;
   readonly args: ReadonlyArray<string>;
 }): boolean => {
-  const helper = NodeChildProcess.spawn(
-    "bash",
-    [
-      "-p",
-      "-c",
-      RELAUNCH_AFTER_EXIT,
-      "relaunch",
-      String(process.pid),
-      input.execPath,
-      ...input.args,
-    ],
-    { detached: true, stdio: "ignore" },
-  );
+  let helper: NodeChildProcess.ChildProcess;
+  try {
+    helper = NodeChildProcess.spawn(
+      "bash",
+      [
+        "-p",
+        "-c",
+        RELAUNCH_AFTER_EXIT,
+        "relaunch",
+        String(process.pid),
+        input.execPath,
+        ...input.args,
+      ],
+      { detached: true, stdio: "ignore" },
+    );
+  } catch {
+    return false;
+  }
   // A failed spawn leaves pid undefined; its later error event must not crash the exiting app.
   helper.on("error", () => {});
   helper.unref();

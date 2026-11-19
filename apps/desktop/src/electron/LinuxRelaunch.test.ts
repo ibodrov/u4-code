@@ -57,11 +57,18 @@ describe.skipIf(HostProcess.Platform.defaultValue() !== "linux")("LinuxRelaunch"
                 EVENTS: events,
                 GATE: gate,
               },
+              // Its own process group, so cleanup also reaches the helper and the fixture sleep.
+              detached: true,
               stdio: ["pipe", "ignore", "ignore"],
             },
           ),
         ),
-        (child) => Effect.sync(() => child.kill("SIGKILL")),
+        (child) =>
+          Effect.sync(() => {
+            try {
+              if (child.pid !== undefined) process.kill(-child.pid, "SIGKILL");
+            } catch {}
+          }),
       );
       oldApp.once("exit", () => Deferred.doneUnsafe(oldExited, Effect.void));
 

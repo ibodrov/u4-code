@@ -221,8 +221,8 @@ const runningAppImagePath = Effect.fn("desktop.lifecycle.runningAppImagePath")(f
   appImagePath: Option.Option<string>,
   executablePath: string,
 ) {
-  const appDir = (yield* HostProcess.Environment).APPDIR;
-  return appDir !== undefined && executablePath.startsWith(`${appDir}/`)
+  const appDir = (yield* HostProcess.Environment).APPDIR?.replace(/\/+$/, "");
+  return appDir?.startsWith("/") && executablePath.startsWith(`${appDir}/`)
     ? appImagePath
     : Option.none<string>();
 });
