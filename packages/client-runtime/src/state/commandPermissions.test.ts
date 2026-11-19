@@ -155,10 +155,15 @@ describe("command permissions", () => {
   it.effect.each([
     { method: WS_METHODS.serverRunStorageCleanup, scope: AuthSettingsWriteScope },
     { method: WS_METHODS.serverReclaimDatabaseSpace, scope: AuthEnvironmentMaintainScope },
-    { method: WS_METHODS.u4WorkspaceLaunch, scope: AuthEnvironmentMaintainScope },
-    { method: WS_METHODS.u4WorkspaceLifecycle, scope: AuthEnvironmentMaintainScope },
-    { method: WS_METHODS.u4WorkspaceConnect, scope: AuthEnvironmentMaintainScope },
-    { method: WS_METHODS.u4WorkspaceExport, scope: AuthEnvironmentMaintainScope },
+    { method: WS_METHODS.u4T3ImportOpen, scope: AuthEnvironmentMaintainScope },
+    { method: WS_METHODS.u4T3ImportGetSession, scope: AuthEnvironmentMaintainScope },
+    { method: WS_METHODS.u4T3ImportListThreads, scope: AuthEnvironmentMaintainScope },
+    { method: WS_METHODS.u4T3ImportPreview, scope: AuthEnvironmentMaintainScope },
+    { method: WS_METHODS.u4T3ImportPreviewPage, scope: AuthEnvironmentMaintainScope },
+    { method: WS_METHODS.u4T3ImportStart, scope: AuthEnvironmentMaintainScope },
+    { method: WS_METHODS.u4T3ImportGetJob, scope: AuthEnvironmentMaintainScope },
+    { method: WS_METHODS.u4T3ImportCancel, scope: AuthEnvironmentMaintainScope },
+    { method: WS_METHODS.u4T3ImportClose, scope: AuthEnvironmentMaintainScope },
   ])("requires the destination $scope grant for $method", ({ method, scope }) =>
     Effect.gen(function* () {
       const registry = yield* setup;

@@ -2,6 +2,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import { expect, it } from "@effect/vitest";
 import type { ManagedPolicyDocument } from "@t3tools/contracts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
+import * as ConfigProvider from "effect/ConfigProvider";
 import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -35,6 +36,7 @@ interface HarnessOptions {
   readonly requestUpdate?: ServiceLauncherClient.ServiceLauncherClient["Service"]["requestUpdate"];
   readonly desktopAppUpdate?: DesktopAppUpdate.DesktopAppUpdate["Service"];
   readonly policy?: ManagedPolicyDocument;
+  readonly releaseBaseUrl?: string;
 }
 
 const archiveBytes = new TextEncoder().encode("not really a tarball");
@@ -49,7 +51,7 @@ const releaseHttpClient = (order: string[], urls: string[], beforeDownload?: Eff
         ).join("");
         return HttpClientResponse.fromWeb(
           request,
-          new Response(`${hex}  t3-1.1.0-linux-x64.tar.gz\n`),
+          new Response(`${hex}  t3-1.1.0-u4.8-linux-x64.tar.gz\n`),
         );
       }
       if (beforeDownload) yield* beforeDownload;
@@ -120,8 +122,8 @@ const makeHarness = Effect.fn("test.make_self_update_harness")(function* (
         preflightProtocols.push(named);
         const result =
           options.preflight === "blocked"
-            ? { status: "blocked", version: "1.1.0", reason: "local update required" }
-            : { status: "ready", version: "1.1.0", launcherProtocol: Number(named) };
+            ? { status: "blocked", version: "1.1.0-u4.8", reason: "local update required" }
+            : { status: "ready", version: "1.1.0-u4.8", launcherProtocol: Number(named) };
         return {
           stdout: JSON.stringify(result),
           stderr: "",
@@ -167,7 +169,14 @@ const makeHarness = Effect.fn("test.make_self_update_harness")(function* (
     Effect.provideService(HostProcess.Platform, "linux"),
     Effect.provideService(HostProcess.Architecture, "x64"),
     Effect.provide(
-      Layer.merge(
+      Layer.mergeAll(
+        ConfigProvider.layer(
+          ConfigProvider.fromEnv({
+            env: {
+              U4CODE_RELEASE_BASE_URL: options.releaseBaseUrl ?? "https://env.example/releases",
+            },
+          }),
+        ),
         ServerConfig.layer({ ...config, mode: options.mode ?? "web" }),
         ManagedPolicy.layerTest(options.policy),
       ),
@@ -201,21 +210,23 @@ it.layer(NodeServices.layer)("server self update", (it) => {
         ),
       });
       const failing = yield* selfUpdate
-        .update({ targetVersion: "1.1.0" })
+        .update({ targetVersion: "1.1.0-u4.8" })
         .pipe(Effect.flip, Effect.forkScoped);
       yield* Deferred.await(downloadFailed);
       // A 5xx is retried after 2, 4, then 8 seconds before the update gives up.
       yield* TestClock.adjust("14 seconds");
       const error = yield* Fiber.join(failing);
       expect(error.reason).toBe(
-        `Could not prepare t3@1.1.0 while downloading the t3 release ${asset} (HTTP ${status} from cdn.example).`,
+        `Could not prepare u4@1.1.0-u4.8 while downloading the t3 release ${asset} (HTTP ${status} from cdn.example).`,
       );
       expect(order).toEqual([]);
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
       expect(yield* fs.readDirectory(path.join(baseDir, "runtime", "versions"))).toEqual([]);
       failDownload = false;
-      expect((yield* selfUpdate.update({ targetVersion: "1.1.0" })).updateId).toBe("launcher-id");
+      expect((yield* selfUpdate.update({ targetVersion: "1.1.0-u4.8" })).updateId).toBe(
+        "launcher-id",
+      );
       expect(order).toEqual(["extract", "preflight", "accept"]);
     }),
   );
@@ -223,9 +234,48 @@ it.layer(NodeServices.layer)("server self update", (it) => {
   // regression: #34502 a remote update never replaces the launcher, so it can be older than the server
   it.effect("names its launcher's protocol to the staged preflight, not its own", () =>
     Effect.gen(function* () {
-      const { selfUpdate, preflightProtocols } = yield* makeHarness({ launcherProtocol: 3 });
-      expect((yield* selfUpdate.update({ targetVersion: "1.1.0" })).updateId).toBe("launcher-id");
+      const { selfUpdate, preflightProtocols, baseDir } = yield* makeHarness({
+        launcherProtocol: 3,
+      });
+      yield* TestClock.setTime(5_000);
+      expect((yield* selfUpdate.update({ targetVersion: "1.1.0-u4.8" })).updateId).toBe(
+        "launcher-id",
+      );
       expect(preflightProtocols).toEqual(["3"]);
+      // That launcher holds no lock between its servers; SSH launches wait on this marker instead.
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      expect(
+        JSON.parse(
+          yield* fs.readFileString(path.join(baseDir, "runtime", "desktop-update-in-progress")),
+        ),
+      ).toEqual({ startedAt: 5_000, expiresAt: 65_000 });
+    }),
+  );
+
+  it.effect.each(["latest", "1.1.0", "../other", "1.1.0-u4.8/other"])(
+    "refuses non-U4 update %s before desktop or launcher handoff",
+    (targetVersion) =>
+      Effect.gen(function* () {
+        for (const mode of ["web", "desktop"] as const) {
+          const harness = yield* makeHarness({ mode });
+          const error = yield* harness.selfUpdate.update({ targetVersion }).pipe(Effect.flip);
+          expect(error.reason).toContain("not an exact U4 release version");
+          expect(harness.order).toEqual([]);
+          expect(harness.urls).toEqual([]);
+        }
+      }),
+  );
+
+  it.effect("refuses a cold update without a U4 source and never contacts upstream", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness({ releaseBaseUrl: "" });
+      const error = yield* harness.selfUpdate
+        .update({ targetVersion: "1.1.0-u4.8" })
+        .pipe(Effect.flip);
+      expect(error.reason).toContain("approved U4 release source");
+      expect(harness.urls).toEqual([]);
+      expect(harness.order).toEqual([]);
     }),
   );
 
@@ -235,10 +285,11 @@ it.layer(NodeServices.layer)("server self update", (it) => {
       const web = yield* makeHarness();
       expect(
         (yield* web.selfUpdate.update({ targetVersion: "latest" }).pipe(Effect.flip)).reason,
-      ).toBe("'latest' is not an exact t3 version.");
+      ).toBe("'latest' is not an exact U4 release version.");
       const desktop = yield* makeHarness({ mode: "desktop" });
       expect(
-        (yield* desktop.selfUpdate.update({ targetVersion: "1.1.0" }).pipe(Effect.flip)).reason,
+        (yield* desktop.selfUpdate.update({ targetVersion: "1.1.0-u4.8" }).pipe(Effect.flip))
+          .reason,
       ).toContain("desktop app");
       expect([...web.order, ...desktop.order]).toEqual([]);
     }),
@@ -263,7 +314,8 @@ it.layer(NodeServices.layer)("server self update", (it) => {
       });
       for (const harness of [service, desktop]) {
         expect(
-          (yield* harness.selfUpdate.update({ targetVersion: "1.1.0" }).pipe(Effect.flip)).reason,
+          (yield* harness.selfUpdate.update({ targetVersion: "1.1.0-u4.8" }).pipe(Effect.flip))
+            .reason,
         ).toBe("Example Corp manages T3 Code updates.");
       }
       expect([...service.order, ...desktop.order]).toEqual([]);
@@ -290,15 +342,17 @@ it.layer(NodeServices.layer)("server self update", (it) => {
           .reason,
       ).toBe("Example Corp manages T3 Code updates. Only stable releases can be installed.");
       expect(order).toEqual([]);
-      // The mirror lists only 1.1.0's archive.
-      expect((yield* selfUpdate.update({ targetVersion: "1.2.0" }).pipe(Effect.flip)).reason).toBe(
-        "Example Corp's update mirror has no t3@1.2.0 for this machine.",
+      // The mirror lists only 1.1.0-u4.8's archive.
+      expect(
+        (yield* selfUpdate.update({ targetVersion: "1.2.0-u4.8" }).pipe(Effect.flip)).reason,
+      ).toBe("Example Corp's update mirror has no u4@1.2.0-u4.8 for this machine.");
+      expect((yield* selfUpdate.update({ targetVersion: "1.1.0-u4.8" })).updateId).toBe(
+        "launcher-id",
       );
-      expect((yield* selfUpdate.update({ targetVersion: "1.1.0" })).updateId).toBe("launcher-id");
       // The release comes from the policy's mirror, not GitHub.
       expect(urls.length).toBeGreaterThan(0);
       for (const url of urls)
-        expect(url).toMatch(/^https:\/\/updates\.example\.com\/t3code\/v1\.[12]\.0\//);
+        expect(url).toMatch(/^https:\/\/updates\.example\.com\/t3code\/1\.[12]\.0-u4\.8\//);
     }),
   );
 
@@ -312,15 +366,15 @@ it.layer(NodeServices.layer)("server self update", (it) => {
           run: (reportProgress) =>
             reportProgress("downloading").pipe(
               Effect.andThen(reportProgress("installing")),
-              Effect.as({ targetVersion: "1.2.0", method: "desktop-app" as const }),
+              Effect.as({ targetVersion: "1.2.0-u4.8", method: "desktop-app" as const }),
             ),
           commit: () => Effect.never,
         },
       });
-      const result = yield* selfUpdate.update({ targetVersion: "1.1.0" }, (stage) =>
+      const result = yield* selfUpdate.update({ targetVersion: "1.1.0-u4.8" }, (stage) =>
         Effect.sync(() => void stages.push(stage)),
       );
-      expect(result).toEqual({ targetVersion: "1.2.0", method: "desktop-app" });
+      expect(result).toEqual({ targetVersion: "1.2.0-u4.8", method: "desktop-app" });
       expect(stages).toEqual(["downloading", "installing"]);
       expect(order).toEqual([]);
     }),
@@ -334,15 +388,30 @@ it.layer(NodeServices.layer)("server self update", (it) => {
         requestUpdate: () =>
           Deferred.succeed(requested, undefined).pipe(Effect.andThen(Deferred.await(accepted))),
       });
-      const first = yield* Effect.forkChild(selfUpdate.update({ targetVersion: "1.1.0" }), {
+      const first = yield* Effect.forkChild(selfUpdate.update({ targetVersion: "1.1.0-u4.8" }), {
         startImmediately: true,
       });
       yield* Deferred.await(requested);
-      expect((yield* selfUpdate.update({ targetVersion: "1.1.1" }).pipe(Effect.flip)).reason).toBe(
-        "A server update is already in progress.",
-      );
+      expect(
+        (yield* selfUpdate.update({ targetVersion: "1.1.1-u4.8" }).pipe(Effect.flip)).reason,
+      ).toBe("A server update is already in progress.");
       yield* Deferred.succeed(accepted, "launcher-id");
       expect((yield* Fiber.join(first)).updateId).toBe("launcher-id");
+    }),
+  );
+
+  it.effect("stages the runtime without asking the launcher to restart", () =>
+    Effect.gen(function* () {
+      const { selfUpdate, order } = yield* makeHarness();
+      expect(yield* selfUpdate.update({ targetVersion: "1.1.0-u4.8", stageOnly: true })).toEqual({
+        targetVersion: "1.1.0-u4.8",
+        method: "boot-service",
+      });
+      expect(order).toEqual(["download", "extract", "preflight"]);
+      expect((yield* selfUpdate.update({ targetVersion: "1.1.0-u4.8" })).updateId).toBe(
+        "launcher-id",
+      );
+      expect(order).toEqual(["download", "extract", "preflight", "preflight", "accept"]);
     }),
   );
 
@@ -354,7 +423,7 @@ it.layer(NodeServices.layer)("server self update", (it) => {
         preflightDuration: "60 seconds",
         preflightStarted,
       });
-      const update = yield* Effect.forkChild(selfUpdate.update({ targetVersion: "1.1.0" }), {
+      const update = yield* Effect.forkChild(selfUpdate.update({ targetVersion: "1.1.0-u4.8" }), {
         startImmediately: true,
       });
       yield* Deferred.await(preflightStarted);
@@ -381,7 +450,7 @@ it.layer(NodeServices.layer)("server self update", (it) => {
       });
 
       const consumed = yield* ServerSelfUpdate.updateProgressStream(selfUpdate, {
-        targetVersion: "1.1.0",
+        targetVersion: "1.1.0-u4.8",
       }).pipe(
         Stream.tap((event) =>
           event.type === "progress" && event.stage === "downloading"
@@ -394,16 +463,16 @@ it.layer(NodeServices.layer)("server self update", (it) => {
 
       yield* Deferred.await(sawDownloading);
       yield* Fiber.interrupt(consumed);
-      expect((yield* selfUpdate.update({ targetVersion: "1.2.0" }).pipe(Effect.flip)).reason).toBe(
-        "A server update is already in progress.",
-      );
+      expect(
+        (yield* selfUpdate.update({ targetVersion: "1.2.0-u4.8" }).pipe(Effect.flip)).reason,
+      ).toBe("A server update is already in progress.");
 
       yield* Deferred.succeed(releaseDownload, undefined);
       yield* Deferred.await(accepted);
       expect(order).toEqual(["download", "extract", "preflight", "accept"]);
-      expect((yield* selfUpdate.update({ targetVersion: "1.1.0" }).pipe(Effect.flip)).reason).toBe(
-        "A server update is already in progress.",
-      );
+      expect(
+        (yield* selfUpdate.update({ targetVersion: "1.1.0-u4.8" }).pipe(Effect.flip)).reason,
+      ).toBe("A server update is already in progress.");
     }),
   );
 });
@@ -457,7 +526,7 @@ it.layer(NodeServices.layer)("pruning runtimes on start", (it) => {
       if (input.servicePlistThroughLink) yield* fs.symlink(realHome, programHome);
       const program = path.join(programHome, "runtime", "versions", input.servicePlistStarts, "t3");
       yield* fs.writeFileString(
-        path.join(agentsDir, "com.t3tools.t3code.service.plist"),
+        path.join(agentsDir, "ca.ibodrov.u4code.service.plist"),
         `<plist><dict>\n<key>ProgramArguments</key>\n<array>\n<string>${program}</string>\n<string>__service-launcher</string>\n</array>\n</dict></plist>\n`,
       );
     }

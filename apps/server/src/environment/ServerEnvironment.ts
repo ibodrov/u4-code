@@ -184,7 +184,6 @@ const makeIdentity = Effect.gen(function* () {
 
 /** @public */
 export const make = Effect.gen(function* () {
-  const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const serverConfig = yield* ServerConfig.ServerConfig;
   const secrets = yield* ServerSecretStore.ServerSecretStore;
@@ -221,9 +220,6 @@ export const make = Effect.gen(function* () {
     orchestrationProtocolVersion: ORCHESTRATION_PROTOCOL_VERSION,
     ...(databaseMigration === undefined ? {} : { databaseMigration }),
     capabilities: {
-      u4Kubernetes: yield* fileSystem
-        .exists(path.join(serverConfig.baseDir, "kubernetes/profiles.json"))
-        .pipe(Effect.orElseSucceed(() => false)),
       repositoryIdentity: true,
       connectionProbe: true,
       attachmentUploads: true,
@@ -241,6 +237,7 @@ export const make = Effect.gen(function* () {
       storageCleanup: true,
       storageCleanupRun: true,
       databaseStorage: true,
+      u4T3Import: hostPlatform === "linux",
       otlpEndpointCheck: true,
       secretSourceCheck: true,
       projectWorktreeCleanup: true,
@@ -278,11 +275,12 @@ export const make = Effect.gen(function* () {
       projectCloneTracking: true,
       projectOrganization: true,
       ignoredFileListing: true,
+      ignoredFileSearch: true,
       triage: true,
       oneTimeSchedules: true,
       freshContext: true,
       scheduledTaskThreadModes: true,
-      npmReleaseLookup: true,
+      npmReleaseLookup: false,
       voiceTranscription: isSpeechPlatformSupported(hostPlatform, hostArchitecture, hostLibc),
       cloudVoiceTranscription: true,
       ...(serverSelfUpdate === null ? {} : { serverSelfUpdate }),
@@ -290,6 +288,7 @@ export const make = Effect.gen(function* () {
       ...(serverSelfUpdate === "boot-service" || desktopAppUpdate
         ? { serverSelfUpdateProgress: true }
         : {}),
+      ...(serverSelfUpdate === "boot-service" ? { serverUpdateStaging: true } : {}),
       ...(desktopAppUpdate ? { desktopAppUpdate: true, desktopAppChannelSwitch: true } : {}),
       serverBrowser: true,
       peerLinks: true,

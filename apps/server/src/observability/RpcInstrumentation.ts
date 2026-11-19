@@ -1,6 +1,7 @@
 import { ORCHESTRATION_V2_WS_METHODS, WS_METHODS, type WsRpcGroup } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as References from "effect/References";
 import type * as RpcGroup from "effect/rpc/RpcGroup";
 import * as RpcMiddleware from "effect/rpc/RpcMiddleware";
@@ -11,12 +12,6 @@ type WsRpcMethod = RpcGroup.Rpcs<typeof WsRpcGroup>["_tag"];
 
 // Trace queries and dashboards depend on these labels, including deviations from method prefixes.
 const RPC_AGGREGATES = {
-  [WS_METHODS.u4WorkspaceList]: "u4-kubernetes",
-  [WS_METHODS.u4WorkspaceLaunch]: "u4-kubernetes",
-  [WS_METHODS.u4WorkspaceLifecycle]: "u4-kubernetes",
-  [WS_METHODS.u4WorkspaceConnect]: "u4-kubernetes",
-  [WS_METHODS.u4WorkspaceExport]: "u4-kubernetes",
-
   [ORCHESTRATION_V2_WS_METHODS.dispatchCommand]: "orchestrationV2",
   [ORCHESTRATION_V2_WS_METHODS.getWorkflowScript]: "orchestration",
   [ORCHESTRATION_V2_WS_METHODS.getNativeChildWork]: "orchestration",
@@ -68,12 +63,22 @@ const RPC_AGGREGATES = {
   [WS_METHODS.serverRemoveKeybinding]: "server",
   [WS_METHODS.serverRunStorageCleanup]: "server",
   [WS_METHODS.serverGetStorageCleanupReport]: "server",
+  [WS_METHODS.u4T3ImportOpen]: "u4T3Import",
+  [WS_METHODS.u4T3ImportGetSession]: "u4T3Import",
+  [WS_METHODS.u4T3ImportListThreads]: "u4T3Import",
+  [WS_METHODS.u4T3ImportPreview]: "u4T3Import",
+  [WS_METHODS.u4T3ImportPreviewPage]: "u4T3Import",
+  [WS_METHODS.u4T3ImportStart]: "u4T3Import",
+  [WS_METHODS.u4T3ImportGetJob]: "u4T3Import",
+  [WS_METHODS.u4T3ImportCancel]: "u4T3Import",
+  [WS_METHODS.u4T3ImportClose]: "u4T3Import",
   [WS_METHODS.serverGetDatabaseStorage]: "server",
   [WS_METHODS.serverReclaimDatabaseSpace]: "server",
   [WS_METHODS.peerLinksList]: "peerLinks",
   [WS_METHODS.peerLinksLink]: "peerLinks",
   [WS_METHODS.peerLinksUnlink]: "peerLinks",
   [WS_METHODS.peerLinksAnswerRequest]: "peerLinks",
+  [WS_METHODS.serverGetSettings]: "server",
   [WS_METHODS.serverUpdateSettings]: "server",
   [WS_METHODS.serverSearchAcpRegistry]: "server",
   [WS_METHODS.serverPrepareAcpRegistryAgent]: "server",
@@ -265,13 +270,25 @@ export const rpcInstrumentationLayer = Layer.succeed(RpcInstrumentation)((effect
   if (RPC_METHODS_WITH_TRACING_DISABLED.has(method)) {
     return measured.pipe(Effect.provideService(References.TracerEnabled, false));
   }
-  return measured.pipe(
-    Effect.withSpan(`${RPC_SPAN_PREFIX}.${method}`, {
-      attributes: {
-        ...DEFAULT_RPC_SPAN_ATTRIBUTES,
-        "rpc.method": method,
-        "rpc.aggregate": RPC_AGGREGATES[method as WsRpcMethod],
-      },
-    }),
+  // The ambient span is the socket's `GET /ws` request, open for the whole connection. Parenting
+  // every call to it grows one trace past the collector's per-trace limit, which then drops it.
+  return Effect.currentParentSpan.pipe(
+    Effect.option,
+    Effect.flatMap((connection) =>
+      measured.pipe(
+        Effect.withSpan(`${RPC_SPAN_PREFIX}.${method}`, {
+          root: true,
+          links: Option.match(connection, {
+            onNone: () => [],
+            onSome: (span) => [{ span, attributes: {} }],
+          }),
+          attributes: {
+            ...DEFAULT_RPC_SPAN_ATTRIBUTES,
+            "rpc.method": method,
+            "rpc.aggregate": RPC_AGGREGATES[method as WsRpcMethod],
+          },
+        }),
+      ),
+    ),
   );
 });

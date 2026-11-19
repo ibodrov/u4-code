@@ -21,7 +21,7 @@ import { listen, resolveStartupRecoveryOffer } from "./DesktopStartupRecovery.ts
 
 const updateState = (patch: Partial<DesktopUpdateState>): DesktopUpdateState => ({
   ...createInitialDesktopUpdateState(
-    "0.1.3",
+    "0.1.3-u4.8",
     { hostArch: "arm64", appArch: "arm64", runningUnderArm64Translation: false },
     "latest",
   ),
@@ -30,34 +30,51 @@ const updateState = (patch: Partial<DesktopUpdateState>): DesktopUpdateState => 
 });
 
 describe("resolveStartupRecoveryOffer", () => {
+  it("keeps official versions out of update and reinstall recovery", () => {
+    expect(
+      resolveStartupRecoveryOffer(
+        updateState({ status: "available", availableVersion: "99.0.0" }),
+        "0.1.2",
+      ),
+    ).toEqual({ _tag: "Releases" });
+    expect(
+      resolveStartupRecoveryOffer(
+        updateState({ enabled: false, status: "disabled", downloadedVersion: "0.1.4-u4.8" }),
+        null,
+      ),
+    ).toEqual({ _tag: "Releases" });
+  });
+
   it("offers a newer version before going back", () => {
     expect(
       resolveStartupRecoveryOffer(
-        updateState({ status: "available", availableVersion: "0.1.4" }),
-        "0.1.2",
+        updateState({ status: "available", availableVersion: "0.1.4-u4.8" }),
+        "0.1.2-u4.8",
       ),
-    ).toEqual({ _tag: "Update", version: "0.1.4" });
+    ).toEqual({ _tag: "Update", version: "0.1.4-u4.8" });
   });
 
   it("offers a retained download after a later check fails", () => {
     expect(
       resolveStartupRecoveryOffer(
-        updateState({ status: "error", errorContext: "check", downloadedVersion: "0.1.4" }),
+        updateState({ status: "error", errorContext: "check", downloadedVersion: "0.1.4-u4.8" }),
         null,
       ),
-    ).toEqual({ _tag: "Update", version: "0.1.4" });
+    ).toEqual({ _tag: "Update", version: "0.1.4-u4.8" });
   });
 
   it("waits for the update check before offering to go back", () => {
-    expect(resolveStartupRecoveryOffer(updateState({ status: "checking" }), "0.1.2")).toEqual({
+    expect(resolveStartupRecoveryOffer(updateState({ status: "checking" }), "0.1.2-u4.8")).toEqual({
       _tag: "Checking",
     });
   });
 
   it("offers the last version that started when no update exists", () => {
-    expect(resolveStartupRecoveryOffer(updateState({ status: "up-to-date" }), "0.1.2")).toEqual({
+    expect(
+      resolveStartupRecoveryOffer(updateState({ status: "up-to-date" }), "0.1.2-u4.8"),
+    ).toEqual({
       _tag: "Reinstall",
-      version: "0.1.2",
+      version: "0.1.2-u4.8",
     });
   });
 
@@ -66,29 +83,29 @@ describe("resolveStartupRecoveryOffer", () => {
       resolveStartupRecoveryOffer(
         updateState({
           status: "downloaded",
-          downloadedVersion: "0.1.4",
-          notAppliedVersion: "0.1.4",
+          downloadedVersion: "0.1.4-u4.8",
+          notAppliedVersion: "0.1.4-u4.8",
         }),
-        "0.1.2",
+        "0.1.2-u4.8",
       ),
-    ).toEqual({ _tag: "Reinstall", version: "0.1.2" });
+    ).toEqual({ _tag: "Reinstall", version: "0.1.2-u4.8" });
   });
 
   it("blames the managed policy unless a newer version can read it", () => {
     expect(
       resolveStartupRecoveryOffer(
-        updateState({ status: "available", availableVersion: "0.1.4" }),
-        "0.1.2",
+        updateState({ status: "available", availableVersion: "0.1.4-u4.8" }),
+        "0.1.2-u4.8",
         true,
       ),
-    ).toEqual({ _tag: "Update", version: "0.1.4" });
+    ).toEqual({ _tag: "Update", version: "0.1.4-u4.8" });
     expect(
-      resolveStartupRecoveryOffer(updateState({ status: "up-to-date" }), "0.1.2", true),
+      resolveStartupRecoveryOffer(updateState({ status: "up-to-date" }), "0.1.2-u4.8", true),
     ).toEqual({ _tag: "ManagedPolicy" });
   });
 
   it("falls back to the releases page when this version never started", () => {
-    expect(resolveStartupRecoveryOffer(updateState({ status: "disabled" }), "0.1.3")).toEqual({
+    expect(resolveStartupRecoveryOffer(updateState({ status: "disabled" }), "0.1.3-u4.8")).toEqual({
       _tag: "Releases",
     });
     expect(resolveStartupRecoveryOffer(updateState({ status: "up-to-date" }), null)).toEqual({
@@ -140,11 +157,11 @@ it.effect.each([
         Effect.provide(
           Layer.mergeAll(
             FileSystem.layerNoop({
-              readFileString: () => Effect.succeed("0.1.2"),
+              readFileString: () => Effect.succeed("0.1.2-u4.8"),
               writeFileString: () => Deferred.succeed(remembered, undefined).pipe(Effect.asVoid),
             }),
             Layer.succeed(DesktopEnvironment.DesktopEnvironment, {
-              appVersion: "0.1.3",
+              appVersion: "0.1.3-u4.8",
               stateDir: "/task/state",
               logDir: "/task/logs",
               path: { join: (...parts: string[]) => parts.join("/") },
@@ -208,6 +225,78 @@ it.effect.each([
         yield* Effect.promise(() => closed.promise);
         expect(closeCount).toBe(1);
       }
+    }),
+  ).pipe(Effect.provide(DesktopState.layer)),
+);
+
+it.effect("installs the build the update action downloaded, not the one it offered", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const installed = yield* Deferred.make<string>();
+      const shown = yield* Deferred.make<void>();
+      let navigate: ((event: { preventDefault: () => void }, url: string) => void) | undefined;
+      const recovery = {
+        isDestroyed: () => false,
+        loadURL: () => Promise.resolve(),
+        once: () => {},
+        webContents: {
+          setWindowOpenHandler: () => {},
+          on: (_event: string, listener: typeof navigate) => {
+            navigate = listener;
+            Deferred.doneUnsafe(shown, Effect.void);
+          },
+        },
+      } as unknown as Electron.BrowserWindow;
+      const offered = updateState({ status: "available", availableVersion: "0.1.4-u4.8" });
+      const state = yield* DesktopState.DesktopState;
+      yield* listen.pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            FileSystem.layerNoop({ readFileString: () => Effect.succeed("0.1.3-u4.8") }),
+            Layer.succeed(DesktopEnvironment.DesktopEnvironment, {
+              appVersion: "0.1.3-u4.8",
+              stateDir: "/task/state",
+              logDir: "/task/logs",
+              path: { join: (...parts: string[]) => parts.join("/") },
+            } as unknown as DesktopEnvironment.DesktopEnvironment["Service"]),
+            Layer.succeed(ElectronApp.ElectronApp, {
+              on: () => Effect.void,
+            } as unknown as ElectronApp.ElectronApp["Service"]),
+            Layer.succeed(
+              ElectronShell.ElectronShell,
+              {} as ElectronShell.ElectronShell["Service"],
+            ),
+            Layer.succeed(ElectronTheme.ElectronTheme, {
+              shouldUseDarkColors: Effect.succeed(false),
+            } as ElectronTheme.ElectronTheme["Service"]),
+            Layer.succeed(ElectronWindow.ElectronWindow, {
+              main: Effect.succeedNone,
+              create: () => Effect.succeed(recovery),
+            } as unknown as ElectronWindow.ElectronWindow["Service"]),
+            Layer.succeed(DesktopUpdates.DesktopUpdates, {
+              subscribe: Effect.succeed({ latest: offered, changes: Stream.empty }),
+              check: () => Effect.void,
+              getState: Effect.succeed(offered),
+              // A release published since the offer: the download fetches it instead.
+              download: Effect.succeed({
+                accepted: true,
+                completed: true,
+                state: updateState({ status: "downloaded", downloadedVersion: "0.1.5-u4.8" }),
+              }),
+              installPrepared: (version: string) => Deferred.succeed(installed, version),
+            } as unknown as DesktopUpdates.DesktopUpdates["Service"]),
+          ),
+        ),
+      );
+      yield* SubscriptionRef.set(state.primaryBackendStartup, {
+        _tag: "Failing",
+        reason: "Server failed before readiness",
+        managedPolicy: false,
+        output: "Failure details",
+      });
+      yield* Deferred.await(shown);
+      navigate!({ preventDefault: () => {} }, "https://startup-recovery.invalid/update");
+      expect(yield* Deferred.await(installed)).toBe("0.1.5-u4.8");
     }),
   ).pipe(Effect.provide(DesktopState.layer)),
 );

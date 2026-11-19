@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
-import type { OrchestrationV2ThreadProjection } from "@t3tools/contracts";
+import * as DateTime from "effect/DateTime";
+import { ThreadId, EnvironmentId, type OrchestrationV2ThreadProjection } from "@t3tools/contracts";
 
 import {
   canForkProjectedAssistantItem,
@@ -54,6 +55,32 @@ describe("thread workflows", () => {
     expect(
       threadSupportsProviderHandoff({
         ...projection,
+        providerThreads: [],
+        thread: {
+          ...projection.thread,
+          activeProviderThreadId: null,
+          importedFrom: {
+            app: "t3",
+            environmentId: EnvironmentId.make("source"),
+            threadId: ThreadId.make("source-thread"),
+            unitRootThreadId: ThreadId.make("source-thread"),
+            generation: 1,
+            importedAt: DateTime.makeUnsafe("2026-11-16T00:00:00Z"),
+            sourceDigest: "digest",
+            unitDigest: "digest",
+            dependencyKey: "key",
+            dependencies: [],
+            importedRowCounts: {},
+            ownedTransferIds: [],
+            lastRunOrdinal: 1,
+          },
+        },
+      }),
+    ).toBe(true);
+
+    expect(
+      threadSupportsProviderHandoff({
+        ...projection,
         runs: [{ ...projection.runs[0]!, status: "running" }],
       }),
     ).toBe(false);
@@ -62,7 +89,8 @@ describe("thread workflows", () => {
         ...projection,
         providerThreads: [{ ...projection.providerThreads[0]!, nativeThreadRef: null }],
       }),
-    ).toBe(false);
+    ).toBe(true);
+    expect(threadSupportsProviderHandoff({ ...projection, providerThreads: [] })).toBe(false);
   });
 
   it("sorts queued messages and gates promotion from capabilities", () => {

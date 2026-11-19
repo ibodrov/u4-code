@@ -9,7 +9,11 @@ import * as Sink from "effect/Sink";
 import * as Stream from "effect/Stream";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
-import { awaitCliNotarization, signMacArchiveContents } from "./build-cli-archive.ts";
+import {
+  awaitCliNotarization,
+  bundleLinuxLibatomic,
+  signMacArchiveContents,
+} from "./build-cli-archive.ts";
 
 const signedEnv = {
   T3CODE_CLI_MAC_SIGN_IDENTITY: "Developer ID Application: Test (TEAM)",
@@ -21,14 +25,21 @@ const signedEnv = {
 type NotaryReply = { readonly exitCode: number; readonly stdout?: string };
 
 /** Stands in for `xcrun notarytool`, codesign and ditto; records each invocation. */
-function stubSpawner(notary: (subcommand: string) => NotaryReply) {
+function stubSpawner(
+  notary: (subcommand: string) => NotaryReply,
+  commandReply?: (argv: ReadonlyArray<string>) => NotaryReply,
+) {
   const calls: Array<ReadonlyArray<string>> = [];
   const spawner = ChildProcessSpawner.make((command) => {
     const argv = ChildProcess.isStandardCommand(command)
       ? [command.command, ...command.args.map(String)]
       : [];
     calls.push(argv);
-    const reply = argv[1] === "notarytool" ? notary(argv[2] ?? "") : { exitCode: 0 };
+    const reply = commandReply
+      ? commandReply(argv)
+      : argv[1] === "notarytool"
+        ? notary(argv[2] ?? "")
+        : { exitCode: 0 };
     return Effect.succeed(
       ChildProcessSpawner.makeHandle({
         pid: ChildProcessSpawner.ProcessId(1),
@@ -72,7 +83,69 @@ const makeContent = Effect.fn("test.makeContent")(function* () {
 const notarySubcommands = (calls: ReadonlyArray<ReadonlyArray<string>>) =>
   calls.filter((argv) => argv[1] === "notarytool").map((argv) => argv.slice(2));
 
-it.layer(NodeServices.layer)("build-cli-archive notarization", (it) => {
+it.layer(NodeServices.layer)("build-cli-archive", (it) => {
+  it.effect(
+    "records the Debian source of bundled libatomic and rejects unsupported distributions",
+    () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const content = yield* makeContent();
+        const library = path.join(content.root, "libatomic.so.1.2.0");
+        yield* fs.writeFileString(library, "fixture library");
+        yield* fs.makeDirectory(path.join(content.root, "scripts/licenses"), { recursive: true });
+        yield* fs.writeFileString(
+          path.join(content.root, "scripts/licenses/libatomic.LICENSE"),
+          "fixture license terms",
+        );
+        const stub = stubSpawner(
+          () => ({ exitCode: 0 }),
+          (argv) => ({
+            exitCode: 0,
+            stdout:
+              argv[0] === "ldd"
+                ? `libatomic.so.1 => ${library} (0x1234)`
+                : argv[0] === "dpkg-query"
+                  ? argv[1] === "-S"
+                    ? `libatomic1:amd64: ${library}\n`
+                    : ["12.2.0-14+deb12u1", "gcc-12", "12.2.0-14+deb12u1"].join(
+                        argv[2]?.includes("\t") ? "\t" : " ",
+                      ) + "\n"
+                  : "",
+          }),
+        );
+        const build = (distro: string) =>
+          withStubs(
+            bundleLinuxLibatomic({
+              repoRoot: content.root,
+              contentDir: content.contentDir,
+              executablePath: content.executablePath,
+            }),
+            stub,
+          ).pipe(
+            Effect.provideService(FileSystem.FileSystem, {
+              ...fs,
+              readFileString: (file, options) =>
+                file === "/etc/os-release"
+                  ? Effect.succeed(`ID=${distro}\nVERSION_ID="12"\n`)
+                  : fs.readFileString(file, options),
+            }),
+          );
+        yield* build("debian");
+        const license = yield* fs.readFileString(
+          path.join(content.contentDir, "lib/libatomic.so.1.LICENSE"),
+        );
+        assert.include(license, "Debian package libatomic1:amd64 12.2.0-14+deb12u1");
+        assert.include(license, "Source package: gcc-12 12.2.0-14+deb12u1");
+        assert.include(license, "https://sources.debian.org/src/gcc-12/12.2.0-14%2Bdeb12u1/");
+        assert.include(license, "fixture license terms");
+        assert.notInclude(license, "Ubuntu");
+        yield* fs.remove(path.join(content.contentDir, "lib"), { recursive: true });
+        const error = yield* build("arch").pipe(Effect.flip);
+        assert.equal(error._tag, "CliArchiveInputMissingError");
+        assert.include(error.message, "Unsupported libatomic provenance distribution: arch");
+      }).pipe(Effect.scoped),
+  );
   it.effect("records a deferred submission without waiting, then gates on Accepted", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;

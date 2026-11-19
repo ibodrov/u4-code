@@ -38,6 +38,31 @@ connection. Pull request diffs and provider settings keep working after the
 previous credential expires. A failed renewal affects that request; it does not
 disconnect an otherwise healthy conversation.
 
+### Approve new devices
+
+By default, any device signed in to your T3 Connect account can open a linked
+machine. To require approval instead, turn on **Require approval for new
+devices** with the T3 Connect settings in **Settings → Sharing & access** on the
+host, or when you first set up T3 Connect. Then someone who takes over your T3
+Connect account cannot reach the machine from a new device without your
+approval. Review the devices that are already approved, described below.
+
+A new device waits and shows a code such as `K7QM-2XFD`. Approve it from a
+device that is already connected, using the prompt or **Settings → Sharing &
+access**. Check that the code matches the one on the waiting device. On a
+headless host, run `t3 auth connect-device list` and then
+`t3 auth connect-device approve K7QM-2XFD`. A request expires after 10 minutes,
+and the device asks again when it retries. Deny keeps that device out until its
+request expires.
+
+Each device is approved once. Revoke it from **T3 Connect devices** in the same
+settings page, or with `t3 auth connect-device revoke <code>`. With approval on,
+it has to ask again. With approval off, it can connect again on its own, so
+revoking in the app offers to turn approval on first. Devices that connected through T3 Connect while approval was off stay
+approved and appear in that list for you to review. A device that has not
+connected since you updated T3 Code asks for approval like a new one. Older apps
+cannot show the code, so update them before you turn approval on.
+
 ### Scripts and agents
 
 `t3 up` asks nothing when you name a choice: `--connect`, `--lan`, or their
@@ -171,6 +196,13 @@ Mobile keeps its manual environment selection.
 Join both devices to the same tailnet. In the desktop app, enable **Tailscale
 HTTPS** in **Settings → Sharing & access**. Turn it off there to remove that route.
 
+Your tailnet needs MagicDNS and HTTPS certificates enabled; see
+[Tailscale's HTTPS setup](https://tailscale.com/docs/how-to/set-up-https-certificates).
+On Linux, T3 Code also needs permission to manage Tailscale; see
+[operator permission](https://tailscale.com/docs/reference/troubleshooting/linux/linux-operator-permission)
+for non-root users. If any of these is missing, T3 Code still starts but can't
+add the HTTPS route.
+
 To start a command-line server with Tailscale HTTPS:
 
 ```bash
@@ -291,8 +323,10 @@ The server shows the exact line for how you started it, and keeps your `PATH`
 when you started it with `npx` and Node is installed only for your user. Where `t3` is not on your `PATH`, such as with only the
 desktop app installed, it names the full path of the app's own `t3` instead. It allows Chrome's sandbox with an AppArmor profile and installs
 any missing libraries and system fonts with apt; pages that load without text
-can mean the host has no fonts. It is safe to run again. Without `sudo`, it only
-reports what it would change.
+can mean the host has no fonts. It is safe to run again, and each run reloads
+the AppArmor profile: run it again if the browser reports a blocked sandbox on a
+host restored from an image or snapshot, where the profile can be on disk
+without being loaded. Without `sudo`, it only reports what it would change.
 
 The browser runs in Chrome's sandbox by default. Chrome cannot start that sandbox
 as root. If your T3 server runs as root, run it as a nonroot user to keep
@@ -470,44 +504,3 @@ whichever connection you reach it through.
 
 Switch **Local environment** back on in the same place to restart with your previous local
 settings.
-
-## U4 Kubernetes workspaces
-
-U4 can run a named project workspace in a configured Kubernetes cluster. In
-**Settings → Environments → Kubernetes workspaces**, select the cluster, registered
-source project and workspace name. New-thread run-context menus also offer
-**Kubernetes workspace**. Setup requires a cluster profile on the managing
-environment; see [Kubernetes setup](../../packaging/u4/kubernetes/README.md).
-
-Creation snapshots the clean committed Git HEAD into an independent remote repository.
-Dirty checkouts, submodules, LFS and tracked `.env` files are refused. Ignored files
-and desktop credentials are not copied. Pair the workspace as an ordinary environment,
-then create its threads with separate worktrees. Heavy Maven/npm commands must use
-`u4-build -- <command> [arguments]`; commands that bypass it share the server's budget.
-
-The tailnet Service provides HTTP. An HTTPS-hosted client needs an HTTPS endpoint;
-use desktop or the workspace's own HTTP page until one is configured. A manager's
-loopback port-forward is available through **Use local bootstrap** on the managing computer when the operator route is unavailable. It uses ordinary pairing, expires after 30 minutes, and can be stopped explicitly. Reconnecting checks the same workspace identity; remote clients never receive this localhost route.
-Mobile can pair with the ordinary environment; cluster management is desktop/web only.
-
-Container crashes restart automatically. Status refresh and reattachment inspect the
-existing Pod; a network outage never creates replacement compute. Stopping deletes
-compute and retains the repository, worktrees, environment identity, database,
-provider home and caches. Saved status includes the last verification time; refresh it before relying on it. The active-compute cap is separate from retained storage. Bringing it back requires explicit approval, the old Pod's
-absence, and a healthy previous node. U4 refuses replacement when it cannot fence the
-old instance, including when the previous Node was deleted or cannot be read. Interrupted turns do not automatically continue after a server restart.
-Schedules remain environment-local and are not disabled by this recovery setting;
-no schedules are imported and a stopped workspace is never automatically awakened.
-
-Builds through `u4-build` run in a private writable copy of the source worktree; the builder sees source read-only. Build outputs and caches stay in the builder, so use `u4-build` to inspect generated test reports. Source edits or a new HEAD refresh that copy. Run commands from the worktree and use relative paths; embedded absolute source paths still refer to read-only files.
-
-Returning a result requires its branch and exact commit SHA. U4 verifies the bundle,
-base ancestry and selected checkpoint refs, and imports into isolated staging on the
-managing environment. It writes a local PR draft and diff without changing the source
-checkout. This MVP has no Git/forge publication action. Publishing later requires
-separate approval of the exact SHA and destination.
-
-Archiving a stopped registration removes its Service,
-but retains its PVC and archives its recovery record. **Restore registration** makes that retained workspace manageable again without creating compute; bringing it back still needs replacement approval. Retained
-storage is not a backup; deleting a PVC and reclaiming its retained volume are separate,
-destructive administrator operations.

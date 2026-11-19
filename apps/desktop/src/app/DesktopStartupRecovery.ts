@@ -1,3 +1,4 @@
+import { CLI_RELEASES_PAGE_URL, isU4ReleaseVersion } from "@t3tools/shared/cliRelease";
 import type { DesktopUpdateState } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -18,7 +19,7 @@ import * as DesktopEnvironment from "./DesktopEnvironment.ts";
 import * as DesktopObservability from "./DesktopObservability.ts";
 import * as DesktopState from "./DesktopState.ts";
 
-const RELEASES_URL = "https://github.com/pingdotgg/t3code/releases";
+const RELEASES_URL = CLI_RELEASES_PAGE_URL;
 const LAST_STARTED_VERSION_FILE = "desktop-last-started-version";
 // Buttons are plain links to this host; will-navigate cancels them and runs the action.
 const ACTION_ORIGIN = "https://startup-recovery.invalid";
@@ -44,7 +45,11 @@ export function resolveStartupRecoveryOffer(
   lastStartedVersion: string | null,
   managedPolicy = false,
 ): StartupRecoveryOffer {
-  if (update.status === "downloading" && update.availableVersion !== null) {
+  if (
+    update.status === "downloading" &&
+    update.availableVersion !== null &&
+    isU4ReleaseVersion(update.availableVersion)
+  ) {
     return {
       _tag: "Downloading",
       version: update.availableVersion,
@@ -54,7 +59,12 @@ export function resolveStartupRecoveryOffer(
   const updateVersion =
     update.downloadedVersion ?? (update.status === "available" ? update.availableVersion : null);
   // A version that already failed to apply here would loop through install and relaunch.
-  if (updateVersion !== null && updateVersion !== update.notAppliedVersion) {
+  if (
+    update.enabled &&
+    updateVersion !== null &&
+    isU4ReleaseVersion(updateVersion) &&
+    updateVersion !== update.notAppliedVersion
+  ) {
     return { _tag: "Update", version: updateVersion };
   }
   // A newer release can know a key this one refuses; an older one or the releases page cannot help.
@@ -62,7 +72,11 @@ export function resolveStartupRecoveryOffer(
   if (update.enabled && (update.status === "idle" || update.status === "checking")) {
     return { _tag: "Checking" };
   }
-  if (lastStartedVersion !== null && lastStartedVersion !== update.currentVersion) {
+  if (
+    lastStartedVersion !== null &&
+    isU4ReleaseVersion(lastStartedVersion) &&
+    lastStartedVersion !== update.currentVersion
+  ) {
     return { _tag: "Reinstall", version: lastStartedVersion };
   }
   return { _tag: "Releases" };
@@ -99,7 +113,7 @@ function describeOffer(offer: StartupRecoveryOffer): { text: string; action: str
       };
     case "Releases":
       return {
-        text: "Get a different version from the releases page.",
+        text: "Get a verified U4 build from your approved U4 release source. The U4 repository has release information.",
         action: actionLink("releases", "Open releases", true),
       };
     case "ManagedPolicy":
@@ -212,13 +226,15 @@ export const listen: Effect.Effect<
     switch (action) {
       case "update": {
         if (current._tag !== "Update") return;
-        const state = yield* updates.getState;
-        if (state.downloadedVersion === null) {
+        let { downloadedVersion } = yield* updates.getState;
+        if (downloadedVersion === null) {
+          // The download re-checks first, so it can fetch a newer build than the one offered.
           const download = yield* updates.download;
           if (!download.completed) return;
+          downloadedVersion = download.state.downloadedVersion;
         }
-        // Waits for a running background check; plain install would refuse.
-        yield* updates.installPrepared(current.version);
+        if (downloadedVersion === null) return;
+        yield* updates.installPrepared(downloadedVersion);
         return;
       }
       case "reinstall":

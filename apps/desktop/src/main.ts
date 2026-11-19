@@ -1,8 +1,8 @@
 import * as MacPermissions from "./permissions/MacPermissions.ts";
+import { handleStdioError } from "./app/stdioErrors.ts";
+
 for (const stream of [process.stdout, process.stderr]) {
-  stream.on("error", (err: NodeJS.ErrnoException) => {
-    if (err.code !== "EPIPE") throw err;
-  });
+  stream.on("error", handleStdioError);
 }
 
 import * as NodeHttpClient from "@effect/platform-node/NodeHttpClient";
@@ -12,7 +12,9 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 // @effect-diagnostics-next-line nodeBuiltinImport:off - Version output must flush before Electron exits, without acquiring the runtime.
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 
@@ -20,6 +22,7 @@ import * as Electron from "electron";
 
 import * as NetService from "@t3tools/shared/Net";
 import * as HostProcess from "@t3tools/shared/HostProcess";
+import { CLI_RELEASE_BASE_URL_ENV, resolveU4ReleaseBaseUrl } from "@t3tools/shared/cliRelease";
 import type { RemoteT3RunnerOptions } from "@t3tools/ssh/tunnel";
 import serverPackageJson from "../../server/package.json" with { type: "json" };
 
@@ -109,6 +112,7 @@ const layerDesktopEnvironment = Layer.unwrap(
 
 const resolveDesktopSshCliRunner = (
   environment: DesktopEnvironment.DesktopEnvironment["Service"],
+  releaseBaseUrl: string | undefined,
 ): RemoteT3RunnerOptions => {
   const devRemoteEntryPath = Option.getOrUndefined(environment.devRemoteT3ServerEntryPath);
   if (environment.isDevelopment && devRemoteEntryPath !== undefined) {
@@ -117,14 +121,37 @@ const resolveDesktopSshCliRunner = (
       nodeEngineRange: serverPackageJson.engines.node,
     };
   }
-  return { archiveVersion: environment.appVersion };
+  return {
+    archiveVersion: environment.appVersion,
+    ...(releaseBaseUrl === undefined ? {} : { releaseBaseUrl }),
+  };
 };
 
 const layerDesktopSshEnvironment = Layer.unwrap(
   Effect.gen(function* () {
     const environment = yield* DesktopEnvironment.DesktopEnvironment;
+    const policy = yield* DesktopManagedPolicy.DesktopManagedPolicy;
     return DesktopSshEnvironment.layer({
-      resolveCliRunner: Effect.succeed(resolveDesktopSshCliRunner(environment)),
+      resolveCliRunner: Effect.gen(function* () {
+        const found = yield* policy.read.pipe(Effect.option);
+        const hostEnvironment = yield* HostProcess.Environment;
+        const policySource = Option.isSome(found)
+          ? found.value?.document.limits?.updates?.feedUrl
+          : "";
+        return resolveDesktopSshCliRunner(
+          environment,
+          resolveU4ReleaseBaseUrl(policySource, hostEnvironment[CLI_RELEASE_BASE_URL_ENV]),
+        );
+      }),
+      resolveLauncherId: yield* Effect.cached(
+        DesktopSshEnvironment.readOrCreateLauncherId(
+          environment.path.join(environment.stateDir, "ssh-launcher-id"),
+        ).pipe(
+          Effect.provide(
+            yield* Effect.context<FileSystem.FileSystem | SecureRandom.SecureRandom>(),
+          ),
+        ),
+      ),
     });
   }),
 );
@@ -160,6 +187,7 @@ const layerDesktopFoundation = Layer.mergeAll(
 
 const layerDesktopSsh = layerDesktopSshEnvironment.pipe(
   Layer.provideMerge(DesktopSshPasswordPrompts.layer()),
+  Layer.provide(DesktopManagedPolicy.layer),
 );
 
 const layerDesktopServerExposure = DesktopServerExposure.layer.pipe(

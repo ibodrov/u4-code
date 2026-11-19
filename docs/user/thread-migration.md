@@ -72,3 +72,40 @@ ORDER BY created_at, message_id;
 Open only the copied database. Do not edit it or point a newer or older server at your recovery
 copy. If the affected environment is remote, make and inspect the copy on the machine that runs
 that environment.
+
+## Selective import into U4
+
+In U4 web or desktop, open **Settings → Import from T3 Code**, or find **Import from T3 Code**
+in the command palette. Choose the destination environment first. The T3 home path and folder
+browser refer to that server's filesystem, including when you connect remotely. This build
+requires a Linux server and supports source database migrations 81–89.
+Each import unit, including required attached chats, must fit limits of 80,000 rows and
+256 MiB of history. Individual rows must fit within 16 MiB. U4 checks the complete unit and
+blocks oversized history without truncating it. Continuing a thread uses a separate handoff
+budget; the full imported history stays stored.
+
+Select individual threads or whole projects, then review the preview. Fork ancestors and attached
+subagents or side chats can be required dependencies. You can map source projects to existing U4
+projects. New projects receive their title and workspace root; repository files, scripts and
+project defaults are not copied. The workspace root must already exist on the destination server.
+
+U4 preserves supported durable history and copies supported referenced assets under new ownership.
+It excludes provider sessions, worktrees, checkpoints, credentials, schedules, links and work that
+could start itself. Close pending interaction cards and stop pending work in T3 before importing.
+The preview names blocked history, missing assets, normalized legacy filenames and unavailable
+historical links. Asset bytes are frozen separately from the database snapshot.
+
+An unchanged, intact copy is skipped. Changed or incomplete copies remain untouched; choose
+**Import as new copy** to create another generation. A skipped fork retains the ancestor copy it
+already shows. Cancel stops before another unit begins; a unit already in its transaction finishes
+as a whole. Check the per-thread results for partial outcomes.
+
+If you deleted a project created by an earlier import, map its source project to an existing U4
+project before importing again. If import stays blocked after a storage or database error,
+resolve that error and restart the U4 server before retrying.
+
+The import notice appears in every client, including mobile. Your next ordinary message starts a
+new provider session with a bounded summary of recent imported conversation text, about 16,000
+tokens by default. Older text and tool details remain visible in U4. Imported runs cannot resume
+native sessions or restore checkpoints. Mobile can view and continue imported histories; its
+Settings do not include an import wizard.

@@ -7,6 +7,7 @@ import {
 } from "@t3tools/contracts";
 import {
   CLI_RELEASES_PAGE_URL,
+  isU4ReleaseVersion,
   cliReleaseChannelOf,
   cliReleaseIndexPageUrl,
   newestCliReleaseVersion,
@@ -60,6 +61,8 @@ async function fetchReleases(url: string, accept: string, signal: AbortSignal) {
 }
 
 export async function findEnvironmentUpdate(currentVersion: string, signal: AbortSignal) {
+  if (!isU4ReleaseVersion(currentVersion))
+    throw new Error("Only exact U4 release versions can be updated from this client.");
   const channel = cliReleaseChannelOf(currentVersion);
   // Public release pages avoid the anonymous API quota shared by devices on the same network.
   const response = await fetchReleases(

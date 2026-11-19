@@ -18,11 +18,14 @@ import {
   cliArchivePlatformKey,
   cliArchiveTarCommand,
   cliReleaseAssetUrl,
+  isU4ReleaseVersion,
+  resolveU4ReleaseBaseUrl,
   type CliArchivePlatformKey,
   parseChecksums,
 } from "@t3tools/shared/cliRelease";
 
 import * as HostProcess from "@t3tools/shared/HostProcess";
+import { PRODUCT_CLI_COMMAND } from "@t3tools/shared/productIdentity";
 
 import * as ProcessRunner from "../processRunner.ts";
 import { isExactServiceVersion, parseServiceState, SERVICE_STATE_FILE } from "./serviceProtocol.ts";
@@ -208,9 +211,14 @@ const installFromArchive = Effect.fn("cloud.pinned_runtime.install_archive")(fun
   const httpClient = input.httpClient;
   input.onProgress?.({ stage: "download", received: 0, total: undefined });
   const { fileName, expected } = yield* publishedArchive(input, platformKey);
+  const archiveUrl = cliReleaseAssetUrl(input.version, fileName, input.releaseBaseUrl);
+  if (archiveUrl === undefined)
+    return yield* new PinnedRuntimeInstallError({
+      step: "selecting an approved U4 release source",
+    });
   const archive = yield* fetchReleaseAsset(
     httpClient,
-    cliReleaseAssetUrl(input.version, fileName, input.releaseBaseUrl),
+    archiveUrl,
     "downloading the t3 release archive",
     input.onProgress,
   );
@@ -264,12 +272,26 @@ const publishedArchive = Effect.fn("cloud.pinned_runtime.published_archive")(fun
   input: PinnedRuntimeInstallInput,
   platformKey: CliArchivePlatformKey,
 ) {
+  if (resolveU4ReleaseBaseUrl(input.releaseBaseUrl) === undefined) {
+    return yield* new PinnedRuntimeInstallError({
+      step: "selecting an approved U4 release source; configure U4CODE_RELEASE_BASE_URL or an update policy source",
+    });
+  }
   const fileName = cliArchiveFileName(input.version, platformKey);
+  const checksumsUrl = cliReleaseAssetUrl(
+    input.version,
+    CLI_RELEASE_CHECKSUMS_FILE,
+    input.releaseBaseUrl,
+  );
+  if (checksumsUrl === undefined)
+    return yield* new PinnedRuntimeInstallError({
+      step: "selecting an approved U4 release source",
+    });
   const checksums = parseChecksums(
     new TextDecoder().decode(
       yield* fetchReleaseAsset(
         input.httpClient,
-        cliReleaseAssetUrl(input.version, CLI_RELEASE_CHECKSUMS_FILE, input.releaseBaseUrl),
+        checksumsUrl,
         "downloading the t3 release checksums",
       ),
     ),
@@ -296,6 +318,9 @@ export const isUnpublishedRelease = (error: unknown): error is PinnedRuntimeInst
 const installPinnedRuntime = Effect.fn("cloud.pinned_runtime.ensure_installed")(function* (
   input: PinnedRuntimeInstallInput,
 ) {
+  if (!isU4ReleaseVersion(input.version)) {
+    return yield* new PinnedRuntimeInstallError({ step: "selecting an exact U4 release version" });
+  }
   const { fs } = input;
   const paths = pinnedRuntimePaths(input.path, input.baseDir, input.version, input.platform);
   const [versionDirExists, entryExists, sentinel] = yield* Effect.all([
@@ -322,6 +347,11 @@ const installPinnedRuntime = Effect.fn("cloud.pinned_runtime.ensure_installed")(
     input.onProgress?.({ stage: "cached" });
     yield* input.validate(paths);
     return paths;
+  }
+  if (resolveU4ReleaseBaseUrl(input.releaseBaseUrl) === undefined) {
+    return yield* new PinnedRuntimeInstallError({
+      step: "selecting an approved U4 release source; configure U4CODE_RELEASE_BASE_URL or an update policy source",
+    });
   }
   if (versionDirExists) {
     yield* fs.remove(paths.versionDir, { recursive: true, force: true }).pipe(
@@ -514,7 +544,108 @@ export const windowsShimTarget = (contents: string) => /^"([^"]+)"/m.exec(conten
 export const generatedWindowsShimTarget = (contents: string) =>
   /^@echo off\r?\n"([^"]+)" %\*\s*$/.exec(contents)?.[1];
 
-/** Where the `t3` launchers written by the install scripts and `t3 update` point. */
+/**
+ * The `t3` script the install scripts and `t3 update` write on macOS and Linux. Exec by absolute
+ * path: through a symlink, argv0 is the link, and the Cursor SDK looks for its helpers beside it.
+ */
+export const posixLauncherScript = (executable: string) =>
+  `#!/bin/sh\nexec '${executable.replaceAll("'", "'\\''")}' "$@"\n`;
+
+/** The executable a script exactly as {@link posixLauncherScript} writes it runs; never a user's wrapper. */
+export const readPosixLauncherTarget = Effect.fn("cloud.pinned_runtime.read_posix_launcher")(
+  function* (launcher: string) {
+    const fs = yield* FileSystem.FileSystem;
+    // Stat first so a runtime binary found the same way is never read whole.
+    const info = yield* fs.stat(launcher).pipe(Effect.option);
+    if (Option.isNone(info) || info.value.type !== "File" || info.value.size > 4096n) {
+      return undefined;
+    }
+    const contents = yield* fs.readFileString(launcher).pipe(Effect.option);
+    if (Option.isNone(contents)) return undefined;
+    const quoted = /^#!\/bin\/sh\nexec '((?:[^']|'\\'')*)' "\$@"\n$/.exec(contents.value)?.[1];
+    return quoted?.replaceAll("'\\''", "'");
+  },
+);
+
+/**
+ * The `t3` this executable was started through on macOS or Linux: a legacy symlink into this
+ * home's runtime/versions, or, since a script execs the executable and argv0 names it, an unedited
+ * {@link posixLauncherScript} that runs it.
+ */
+export const findPosixLauncher = Effect.fn("cloud.pinned_runtime.find_posix_launcher")(
+  function* (input: { readonly launchedAs: string; readonly versionsDir: string }) {
+    const fs = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const environment = yield* HostProcess.Environment;
+    const linkTarget = yield* fs.readLink(input.launchedAs).pipe(Effect.option);
+    if (Option.isSome(linkTarget)) {
+      const resolved = path.resolve(path.dirname(input.launchedAs), linkTarget.value);
+      return isVersionExecutable(path, input.versionsDir, resolved) ? input.launchedAs : undefined;
+    }
+    const realPath = (file: string) =>
+      fs.realPath(file).pipe(Effect.orElseSucceed(() => undefined));
+    const executable = yield* realPath(input.launchedAs);
+    const realVersionsDir = yield* realPath(input.versionsDir);
+    if (
+      executable === undefined ||
+      realVersionsDir === undefined ||
+      !isVersionExecutable(path, realVersionsDir, executable)
+    ) {
+      return undefined;
+    }
+    const recorded = yield* fs
+      .readFileString(path.join(path.dirname(input.versionsDir), "launchers"))
+      .pipe(Effect.orElseSucceed(() => ""));
+    const cwd = yield* HostProcess.WorkingDirectory;
+    const candidates = [
+      // PATH first, resolved like the shell does.
+      ...(environment["PATH"] ?? "")
+        .split(":")
+        .filter((directory) => directory.length > 0)
+        .map((directory) => path.resolve(cwd, directory, PRODUCT_CLI_COMMAND)),
+      path.join(
+        environment["T3CODE_INSTALL_BIN_DIR"] ||
+          path.join(yield* HostProcess.HomeDirectory, ".local", "bin"),
+        PRODUCT_CLI_COMMAND,
+      ),
+      ...recorded.split(/\r?\n/),
+    ].filter((candidate) => path.isAbsolute(candidate));
+    for (const candidate of candidates) {
+      // The script itself, so an alias that links to it keeps working.
+      const script = yield* realPath(candidate);
+      if (script === undefined) continue;
+      // Like the shell, pass over a script nobody can execute.
+      const info = yield* fs.stat(script).pipe(Effect.option);
+      if (Option.isNone(info) || (info.value.mode & 0o111) === 0) continue;
+      const target = yield* readPosixLauncherTarget(script);
+      if (target !== undefined && (yield* realPath(target)) === executable) return script;
+    }
+    return undefined;
+  },
+);
+
+/** Writes {@link posixLauncherScript} at `launcher` in one rename, replacing a legacy symlink rather than writing through it. */
+export const writePosixLauncher = Effect.fn("cloud.pinned_runtime.write_posix_launcher")(
+  function* (input: {
+    readonly launcher: string;
+    readonly executable: string;
+    /** Fail instead of replacing a file that is there, even one created after the caller looked. */
+    readonly exclusive: boolean;
+  }) {
+    const fs = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const staging = yield* fs.makeTempFileScoped({
+      directory: path.dirname(input.launcher),
+      prefix: ".t3-",
+    });
+    yield* fs.writeFileString(staging, posixLauncherScript(input.executable));
+    yield* fs.chmod(staging, 0o755);
+    yield* input.exclusive ? fs.link(staging, input.launcher) : fs.rename(staging, input.launcher);
+  },
+  Effect.scoped,
+);
+
+/** Where the launchers written by the install scripts and CLI update point. */
 const shellLauncherTargets = Effect.fn("cloud.pinned_runtime.shell_launcher_targets")(function* (
   baseDir: string,
 ) {
@@ -523,28 +654,42 @@ const shellLauncherTargets = Effect.fn("cloud.pinned_runtime.shell_launcher_targ
   const platform = yield* HostProcess.Platform;
   const environment = yield* HostProcess.Environment;
   const home = yield* HostProcess.HomeDirectory;
-  const launcherName = platform === "win32" ? "t3.cmd" : "t3";
+  const launcherNames =
+    platform === "win32" ? [`${PRODUCT_CLI_COMMAND}.cmd`, "t3.cmd"] : [PRODUCT_CLI_COMMAND];
   const launchersFile = path.join(baseDir, PINNED_RUNTIME_DIR, PINNED_RUNTIME_LAUNCHERS_FILE);
   const recorded = (yield* fs.readFileString(launchersFile).pipe(Effect.orElseSucceed(() => "")))
     .split(/\r?\n/)
     .filter((launcher) => launcher.trim().length > 0);
-  const found = [
+  const binDirs = [
     environment["T3CODE_INSTALL_BIN_DIR"] || path.join(home, ".local", "bin"),
     ...(environment["PATH"] ?? environment["Path"] ?? "").split(platform === "win32" ? ";" : ":"),
-  ]
-    .filter((directory) => path.isAbsolute(directory))
-    .map((directory) => path.join(directory, launcherName));
+  ].filter((directory) => path.isAbsolute(directory));
+  const found = binDirs.flatMap((directory) =>
+    launcherNames.map((name) => path.join(directory, name)),
+  );
   const versionsDir = pinnedRuntimeVersionsDir(path, baseDir);
   const realVersionsDir = yield* fs
     .realPath(versionsDir)
     .pipe(Effect.orElseSucceed(() => versionsDir));
+  if (platform !== "win32") {
+    // A PATH directory can link straight to a bundled runtime, whose entry is still named t3.
+    for (const directory of binDirs) {
+      const realDir = yield* fs.realPath(directory).pipe(Effect.option);
+      if (
+        Option.isSome(realDir) &&
+        isVersionExecutable(path, realVersionsDir, path.join(realDir.value, "t3"))
+      ) {
+        found.push(path.join(directory, "t3"));
+      }
+    }
+  }
   const inVersionsDir = (candidate: string) =>
     launcherOwnsVersionsDir(path, versionsDir, candidate) ||
     launcherOwnsVersionsDir(path, realVersionsDir, candidate);
   const unrecorded: Array<string> = [];
   const targets: Array<string> = [];
   for (const launcher of [...recorded, ...found]) {
-    const target =
+    const resolved =
       platform === "win32"
         ? yield* fs.readFileString(launcher).pipe(
             Effect.map(windowsShimTarget),
@@ -552,13 +697,20 @@ const shellLauncherTargets = Effect.fn("cloud.pinned_runtime.shell_launcher_targ
           )
         : // Fully resolved, through chained links and a symlinked T3 home alike.
           yield* fs.realPath(launcher).pipe(Effect.orElseSucceed(() => undefined));
-    if (target === undefined) continue;
+    if (resolved === undefined) continue;
+    const scriptTarget =
+      platform === "win32" ? undefined : yield* readPosixLauncherTarget(resolved);
+    const target =
+      scriptTarget === undefined
+        ? resolved
+        : yield* fs.realPath(scriptTarget).pipe(Effect.orElseSucceed(() => scriptTarget));
     // A runtime's own entry, on the macOS service PATH or recorded by an earlier prune, is no launcher.
     // It is named as `versions/<version>/t3`, and neither it nor its directory is a link.
     const entryDir = path.dirname(path.resolve(launcher));
     const parent = path.dirname(entryDir);
     if (
       platform !== "win32" &&
+      scriptTarget === undefined &&
       (parent === versionsDir || parent === realVersionsDir) &&
       target === path.join(realVersionsDir, path.basename(entryDir), path.basename(launcher))
     ) {
@@ -608,7 +760,7 @@ const runningExecutables = Effect.fn("cloud.pinned_runtime.running_executables")
               "-NoProfile",
               "-NonInteractive",
               "-Command",
-              "Get-CimInstance Win32_Process | Select-Object -ExpandProperty CommandLine",
+              "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); Get-CimInstance Win32_Process | Select-Object -ExpandProperty CommandLine",
             ],
           }
         : { command: "lsof", args: ["-nP", "-w", "-d", "txt", "-F", "n"] }),

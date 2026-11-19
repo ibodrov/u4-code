@@ -6,6 +6,7 @@ export const PRODUCT_HOME_DIR_NAME = ".u4";
 export const PRODUCT_HOME_ENV = "U4CODE_HOME";
 export const PRODUCT_CLI_COMMAND = "u4";
 export const PRODUCT_DEFAULT_PORT = 4773;
+export const PRODUCT_REPOSITORY_URL = "https://github.com/ibodrov/u4-code";
 
 export const PRODUCT_APP_ID = "ca.ibodrov.u4code";
 export const PRODUCT_DEV_APP_ID = "ca.ibodrov.u4code.dev";

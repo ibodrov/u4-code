@@ -17,10 +17,16 @@ import { WS_METHODS } from "./rpc.ts";
 
 /** Incremental client enforcement; the server still authorizes every request. */
 export const CLIENT_GUARDED_RPC_SCOPES = {
-  [WS_METHODS.u4WorkspaceLaunch]: AuthEnvironmentMaintainScope,
-  [WS_METHODS.u4WorkspaceLifecycle]: AuthEnvironmentMaintainScope,
-  [WS_METHODS.u4WorkspaceConnect]: AuthEnvironmentMaintainScope,
-  [WS_METHODS.u4WorkspaceExport]: AuthEnvironmentMaintainScope,
+  [WS_METHODS.u4T3ImportOpen]: AuthEnvironmentMaintainScope,
+  [WS_METHODS.u4T3ImportGetSession]: AuthEnvironmentMaintainScope,
+  [WS_METHODS.u4T3ImportListThreads]: AuthEnvironmentMaintainScope,
+  [WS_METHODS.u4T3ImportPreview]: AuthEnvironmentMaintainScope,
+  [WS_METHODS.u4T3ImportPreviewPage]: AuthEnvironmentMaintainScope,
+  [WS_METHODS.u4T3ImportStart]: AuthEnvironmentMaintainScope,
+  [WS_METHODS.u4T3ImportGetJob]: AuthEnvironmentMaintainScope,
+  [WS_METHODS.u4T3ImportCancel]: AuthEnvironmentMaintainScope,
+  [WS_METHODS.u4T3ImportClose]: AuthEnvironmentMaintainScope,
+
   [WS_METHODS.providerAuthRemoveMethod]: AuthProvidersManageScope,
   [WS_METHODS.previewClose]: AuthPreviewOperateScope,
   // Stopping a server signals its processes, as closing a terminal does.

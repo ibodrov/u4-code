@@ -39,7 +39,6 @@ type WsRpcMethod = RpcGroup.Rpcs<typeof WsRpcGroup>["_tag"];
 
 export const RPC_REQUIRED_SCOPES = {
   ...CLIENT_GUARDED_RPC_SCOPES,
-  [WS_METHODS.u4WorkspaceList]: AuthEnvironmentMaintainScope,
   [ORCHESTRATION_V2_WS_METHODS.dispatchCommand]: AuthOrchestrationOperateScope,
   [ORCHESTRATION_V2_WS_METHODS.getWorkflowScript]: AuthOrchestrationReadScope,
   [ORCHESTRATION_V2_WS_METHODS.getNativeChildWork]: AuthOrchestrationReadScope,
@@ -91,6 +90,7 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.serverRemoveKeybinding]: AuthSettingsWriteScope,
   [WS_METHODS.serverGetStorageCleanupReport]: AuthOrchestrationReadScope,
   [WS_METHODS.serverGetDatabaseStorage]: AuthOrchestrationReadScope,
+  [WS_METHODS.serverGetSettings]: AuthOrchestrationReadScope,
   [WS_METHODS.peerLinksList]: AuthAccessReadScope,
   [WS_METHODS.serverUpdateSettings]: AuthSettingsWriteScope,
   [WS_METHODS.serverSearchAcpRegistry]: AuthOrchestrationReadScope,

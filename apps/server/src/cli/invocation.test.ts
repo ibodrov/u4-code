@@ -6,6 +6,7 @@ import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 
 import packageJson from "../../package.json" with { type: "json" };
+import { posixLauncherScript } from "../cloud/pinnedRuntime.ts";
 import {
   resolveHostCliCommand,
   resolveRootCliCommand,
@@ -29,11 +30,11 @@ it.layer(NodeServices.layer)("root CLI commands", (it) => {
       Effect.provideService(HostProcess.Environment, { PATH: input.path ?? "", ...input.env }),
     );
 
-  const pathWithT3 = Effect.gen(function* () {
+  const pathWithU4 = Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
     const bin = yield* fs.makeTempDirectoryScoped();
-    yield* fs.writeFileString(path.join(bin, "t3"), "#!/bin/sh\n", { mode: 0o755 });
+    yield* fs.writeFileString(path.join(bin, "u4"), "#!/bin/sh\n", { mode: 0o755 });
     return bin;
   });
 
@@ -50,9 +51,9 @@ it.layer(NodeServices.layer)("root CLI commands", (it) => {
         yield* rootCommand({
           node: "/home/theo/.local/node/bin/node",
           entry: "/home/theo/.local/lib/node_modules/t3/dist/bin.mjs",
-          path: yield* pathWithT3,
+          path: yield* pathWithU4,
         }),
-      ).toBe('sudo env "PATH=$PATH" t3 browser setup');
+      ).toBe('sudo env "PATH=$PATH" u4 browser setup');
     }),
   );
 
@@ -63,22 +64,22 @@ it.layer(NodeServices.layer)("root CLI commands", (it) => {
         yield* rootCommand({
           node: "/home/theo/.local/node/bin/node",
           entry: "/home/theo/.local/lib/node_modules/t3/dist/bin.mjs",
-          path: yield* pathWithT3,
+          path: yield* pathWithU4,
           args,
         }),
-      ).toBe(`sudo env "PATH=$PATH" t3 browser setup --base-dir '/srv/t3 home'`);
+      ).toBe(`sudo env "PATH=$PATH" u4 browser setup --base-dir '/srv/t3 home'`);
       expect(
         yield* rootCommand({ node: "/opt/t3/t3", entry: "/opt/t3/t3", executable: true, args }),
       ).toBe("sudo /opt/t3/t3 browser setup --base-dir '/srv/t3 home'");
     }),
   );
 
-  it.effect("names this install's launcher when t3 is not on PATH", () =>
+  it.effect("names this install's launcher when u4 is not on PATH", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
       const home = yield* fs.makeTempDirectoryScoped();
-      const shim = path.join(home, ".local bin", "t3");
+      const shim = path.join(home, ".local bin", "u4");
       yield* fs.makeDirectory(path.dirname(shim), { recursive: true });
       yield* fs.writeFileString(shim, "#!/bin/sh\n", { mode: 0o755 });
       const desktop = {
@@ -89,16 +90,16 @@ it.layer(NodeServices.layer)("root CLI commands", (it) => {
 
       expect(yield* rootCommand(desktop)).toBe(`sudo '${shim}' browser setup`);
 
-      // An unrelated `t3` on PATH, such as an older npm global, is another install's CLI.
-      expect(yield* rootCommand({ ...desktop, path: yield* pathWithT3 })).toBe(
+      // A different executable named `u4` belongs to another install.
+      expect(yield* rootCommand({ ...desktop, path: yield* pathWithU4 })).toBe(
         `sudo '${shim}' browser setup`,
       );
 
-      // The link the app installs onto PATH leads to its own launcher, so plain `t3` is right.
+      // The link the app installs onto PATH leads to its own launcher, so plain `u4` is right.
       const linked = yield* fs.makeTempDirectoryScoped();
-      yield* fs.symlink(shim, path.join(linked, "t3"));
+      yield* fs.symlink(shim, path.join(linked, "u4"));
       expect(yield* rootCommand({ ...desktop, path: linked })).toBe(
-        'sudo env "PATH=$PATH" t3 browser setup',
+        'sudo env "PATH=$PATH" u4 browser setup',
       );
 
       expect(
@@ -115,11 +116,11 @@ it.layer(NodeServices.layer)("root CLI commands", (it) => {
           node: "/opt/t3/t3",
           entry: "/opt/t3/t3",
           executable: true,
-          path: yield* pathWithT3,
+          path: yield* pathWithU4,
         }),
       ).toBe("sudo /opt/t3/t3 browser setup");
 
-      // A global npm launcher runs the downloaded executable; PATH's `t3` is that launcher.
+      // A bundled runtime uses its own executable even when npm's t3 is on PATH.
       const prefix = path.join(home, "npm");
       const npmLauncher = path.join(prefix, "lib/node_modules/t3/bin/t3.mjs");
       yield* fs.makeDirectory(path.dirname(npmLauncher), { recursive: true });
@@ -132,17 +133,17 @@ it.layer(NodeServices.layer)("root CLI commands", (it) => {
       yield* fs.symlink(npmLauncher, path.join(prefix, "bin/t3"));
       expect(
         yield* rootCommand({
-          node: "/home/theo/.t3/runtime/versions/1.0.0/t3",
-          entry: "/home/theo/.t3/runtime/versions/1.0.0/t3",
+          node: "/home/theo/.u4/runtime/versions/1.0.0/t3",
+          entry: "/home/theo/.u4/runtime/versions/1.0.0/t3",
           executable: true,
           path: path.join(prefix, "bin"),
           env: { T3CODE_NPM_LAUNCHER_PATH: npmLauncher },
         }),
-      ).toBe('sudo env "PATH=$PATH" t3 browser setup');
+      ).toBe("sudo /home/theo/.u4/runtime/versions/1.0.0/t3 browser setup");
 
       expect(
         yield* rootCommand({ ...desktop, env: { T3CODE_CLI_PATH: path.join(home, "gone") } }),
-      ).toBe('sudo env "PATH=$PATH" t3 browser setup');
+      ).toBe('sudo env "PATH=$PATH" u4 browser setup');
     }),
   );
 });
@@ -170,7 +171,7 @@ it.layer(NodeServices.layer)("host CLI commands", (it) => {
         `& "${shim}" doctor "--base-dir" "C:\\Users\\Jane Doe\\.t3"`,
       );
       expect((yield* hostCommand("win32", {})).command).toBe(
-        't3 doctor "--base-dir" "C:\\Users\\Jane Doe\\.t3"',
+        'u4 doctor "--base-dir" "C:\\Users\\Jane Doe\\.t3"',
       );
       expect(
         (yield* resolveHostCliCommand("doctor", ["--base-dir", "C:\\T3\\\u201CArchive\u201D"]).pipe(
@@ -180,7 +181,7 @@ it.layer(NodeServices.layer)("host CLI commands", (it) => {
           Effect.provideService(HostProcess.Arguments, ["C:\\t3.exe", "C:\\bin.mjs"]),
           Effect.provideService(HostProcess.IsExecutable, false),
         )).command,
-      ).toBe('t3 doctor "--base-dir" "C:\\T3\\\u201C\u201CArchive\u201D\u201D"');
+      ).toBe('u4 doctor "--base-dir" "C:\\T3\\\u201C\u201CArchive\u201D\u201D"');
       expect((yield* hostCommand("linux", { T3CODE_CLI_PATH: shim })).command).toMatch(
         / doctor --base-dir 'C:\\Users\\Jane Doe\\\.t3'$/,
       );
@@ -291,40 +292,93 @@ it.layer(NodeServices.layer)("manual server installation ownership", (it) => {
     }),
   );
 
-  it.effect("names the launcher symlink that started a downloaded runtime", () =>
+  it.effect("names the launcher that started a downloaded runtime", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
       const root = yield* fs.realPath(yield* fs.makeTempDirectoryScoped());
-      // The install script's launcher names ~/.t3, which here links to a home elsewhere.
-      const executable = path.join(root, "data/t3/runtime/versions/1.0.0/t3");
-      const launcher = path.join(root, "bin/t3");
-      const copy = path.join(root, "bin/t3-copy");
+      // The install script's launcher names ~/.u4, which here links to a home elsewhere.
+      const executable = path.join(root, "data/u4/runtime/versions/1.0.0/t3");
+      const launcher = path.join(root, "bin/u4");
+      const copy = path.join(root, "bin/u4-copy");
+      const movedBin = path.join(root, "moved-bin");
+      const official = path.join(movedBin, "t3");
+      const officialExecutable = path.join(root, "data/t3/runtime/versions/1.0.0/t3");
+      const officialScript = posixLauncherScript(officialExecutable);
       yield* fs.makeDirectory(path.dirname(executable), { recursive: true });
       yield* fs.makeDirectory(path.dirname(launcher), { recursive: true });
+      yield* fs.makeDirectory(movedBin);
+      yield* fs.makeDirectory(path.dirname(officialExecutable), { recursive: true });
       yield* fs.writeFileString(executable, "", { mode: 0o755 });
+      yield* fs.writeFileString(officialExecutable, "", { mode: 0o755 });
+      yield* fs.writeFileString(official, officialScript, { mode: 0o755 });
       yield* fs.writeFileString(copy, "", { mode: 0o755 });
-      yield* fs.symlink(path.join(root, "data/t3"), path.join(root, ".t3"));
-      yield* fs.symlink(path.join(root, ".t3/runtime/versions/1.0.0/t3"), launcher);
-      // Earlier PATH entries hold a directory and a non-executable file named t3.
-      yield* fs.makeDirectory(path.join(root, "shadow-dir/t3"), { recursive: true });
+      yield* fs.symlink(path.join(root, "data/u4"), path.join(root, ".u4"));
+      const target = path.join(root, ".u4/runtime/versions/1.0.0/t3");
+      yield* fs.symlink(target, launcher);
+      // Earlier PATH entries hold a directory and a non-executable file named u4.
+      yield* fs.makeDirectory(path.join(root, "shadow-dir/u4"), { recursive: true });
       yield* fs.makeDirectory(path.join(root, "shadow-file"));
-      yield* fs.writeFileString(path.join(root, "shadow-file/t3"), "");
-      const resolve = (invokedAs: string) =>
+      yield* fs.writeFileString(path.join(root, "shadow-file/u4"), "");
+      const resolve = (invokedAs: string, PATH = "shadow-dir:shadow-file:bin") =>
         resolveServerInstallation.pipe(
           Effect.provideService(HostProcess.ExecutablePath, executable),
           Effect.provideService(HostProcess.IsExecutable, true),
           Effect.provideService(HostProcess.InvokedAs, invokedAs),
           Effect.provideService(HostProcess.WorkingDirectory, root),
-          Effect.provideService(HostProcess.Environment, { PATH: "shadow-dir:shadow-file:bin" }),
+          Effect.provideService(HostProcess.Environment, { PATH }),
+          Effect.provideService(HostProcess.HomeDirectory, root),
           Effect.provideService(HostProcess.Platform, "linux"),
         );
-      const baseDir = path.join(root, ".t3");
+      const baseDir = path.join(root, ".u4");
 
-      expect(yield* resolve("t3")).toEqual({ kind: "t3-launcher", launcher, baseDir });
+      expect(yield* resolve("u4")).toEqual({ kind: "t3-launcher", launcher, baseDir });
       expect(yield* resolve(launcher)).toEqual({ kind: "t3-launcher", launcher, baseDir });
       expect(yield* resolve(executable)).toBeNull();
       expect(yield* resolve(copy)).toBeNull();
+
+      // The script launcher execs the runtime by absolute path, so argv0 names the runtime.
+      yield* fs.remove(launcher);
+      const script = posixLauncherScript(target);
+      yield* fs.writeFileString(launcher, script, { mode: 0o755 });
+      expect(yield* resolve(executable, path.join(root, "bin"))).toEqual({
+        kind: "t3-launcher",
+        launcher,
+        baseDir,
+      });
+
+      const moved = path.join(movedBin, "u4");
+      yield* fs.writeFileString(path.join(baseDir, "runtime/launchers"), launcher + "\n");
+      yield* fs.rename(launcher, moved);
+      const searchPath = movedBin + ":" + path.join(root, "bin");
+      expect(yield* fs.exists(launcher)).toBe(false);
+      expect(yield* fs.readFileString(path.join(baseDir, "runtime/launchers"))).toBe(
+        launcher + "\n",
+      );
+      expect(yield* fs.readFileString(moved)).toBe(script);
+      expect(yield* resolve(executable, searchPath)).toEqual({
+        kind: "t3-launcher",
+        launcher: moved,
+        baseDir,
+      });
+
+      yield* fs.writeFileString(moved, script + "# user wrapper\n");
+      expect(yield* resolve(executable, searchPath)).toBeNull();
+      const otherVersion = path.join(baseDir, "runtime/versions/2.0.0/t3");
+      yield* fs.makeDirectory(path.dirname(otherVersion), { recursive: true });
+      yield* fs.writeFileString(otherVersion, "", { mode: 0o755 });
+      for (const unrelated of [copy, otherVersion, officialExecutable]) {
+        yield* fs.writeFileString(moved, posixLauncherScript(unrelated));
+        expect(yield* resolve(executable, searchPath)).toBeNull();
+      }
+      yield* fs.writeFileString(moved, script);
+      expect(yield* resolve(executable, searchPath)).toEqual({
+        kind: "t3-launcher",
+        launcher: moved,
+        baseDir,
+      });
+      expect(yield* fs.readFileString(official)).toBe(officialScript);
+      expect(yield* fs.readFileString(officialExecutable)).toBe("");
     }),
   );
 

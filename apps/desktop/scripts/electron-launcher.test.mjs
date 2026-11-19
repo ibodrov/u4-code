@@ -11,6 +11,7 @@ import {
   makeDevelopmentEnvironmentScript,
   makeDevelopmentLauncherScript,
   resolveElectronBinaryPath,
+  resolveMacLauncherIdentity,
   resolveMacLauncherPaths,
   writeDevelopmentLauncherScript,
 } from "./electron-launcher.mjs";
@@ -72,6 +73,19 @@ describe("electron development launcher", () => {
       "/repo/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron",
     );
     assert.deepEqual(calls, ["ensure", "require:electron"]);
+  });
+
+  it("keeps launcher bundles off official T3 Code's and the installed U4 app's links", () => {
+    assert.deepEqual(resolveMacLauncherIdentity(true, "U4 Code"), {
+      displayName: "U4 Code (Dev)",
+      bundleId: "ca.ibodrov.u4code.dev.u4code",
+      protocolSchemes: ["u4code-dev"],
+    });
+    assert.deepEqual(resolveMacLauncherIdentity(false, "u4-code"), {
+      displayName: "U4 Code (Beta)",
+      bundleId: "ca.ibodrov.u4code.unpackaged",
+      protocolSchemes: [],
+    });
   });
 
   it("keeps the native Electron executable name inside the branded macOS bundle", () => {

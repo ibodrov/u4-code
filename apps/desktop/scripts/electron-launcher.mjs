@@ -4,20 +4,41 @@ import * as NodeModule from "node:module";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import * as NodeURL from "node:url";
+import {
+  PRODUCT_APP_ID,
+  PRODUCT_BASE_NAME,
+  PRODUCT_DEV_APP_ID,
+  PRODUCT_DEV_URL_SCHEME,
+} from "@t3tools/shared/productIdentity";
 import { ensureElectronRuntime } from "./ensure-electron-runtime.mjs";
 
 const isDevelopment = Boolean(process.env.VITE_DEV_SERVER_URL);
 const __dirname = NodePath.dirname(NodeURL.fileURLToPath(import.meta.url));
 export const desktopDir = NodePath.resolve(__dirname, "..");
 const repoRoot = NodePath.resolve(desktopDir, "..", "..");
-const devBundleIdSuffix = NodePath.basename(repoRoot)
-  .toLowerCase()
-  .replaceAll(/[^a-z0-9]+/g, "");
-const APP_DISPLAY_NAME = isDevelopment ? "U4 Code (Dev)" : "U4 Code (Beta)";
-const APP_BUNDLE_ID = isDevelopment
-  ? `com.t3tools.t3code.dev.${devBundleIdSuffix || "local"}`
-  : "com.t3tools.t3code";
-const APP_PROTOCOL_SCHEMES = isDevelopment ? ["t3code-dev"] : ["t3code"];
+
+export function resolveMacLauncherIdentity(development, checkoutName) {
+  const suffix = checkoutName.toLowerCase().replaceAll(/[^a-z0-9]+/g, "");
+  return development
+    ? {
+        displayName: `${PRODUCT_BASE_NAME} (Dev)`,
+        bundleId: `${PRODUCT_DEV_APP_ID}.${suffix || "local"}`,
+        protocolSchemes: [PRODUCT_DEV_URL_SCHEME],
+      }
+    : // The unpackaged production launcher has its own id and no URL scheme: Launch Services
+      // could otherwise send installed-app links to a bare Electron that has no app entry.
+      {
+        displayName: `${PRODUCT_BASE_NAME} (Beta)`,
+        bundleId: `${PRODUCT_APP_ID}.unpackaged`,
+        protocolSchemes: [],
+      };
+}
+
+const {
+  displayName: APP_DISPLAY_NAME,
+  bundleId: APP_BUNDLE_ID,
+  protocolSchemes: APP_PROTOCOL_SCHEMES,
+} = resolveMacLauncherIdentity(isDevelopment, NodePath.basename(repoRoot));
 const LAUNCHER_VERSION = 20;
 const developmentMacIconPngPath = NodePath.join(
   repoRoot,
@@ -287,12 +308,13 @@ function patchMainBundleInfoPlist(appBundlePath, iconPath, executableName) {
   }
   // macOS 26 offers Messages/Mail codes in every text field unless opted out.
   setPlistJson(infoPlistPath, "NSAutoFillRequiresTextContentTypeForOneTimeCodeOnMac", true);
-  setPlistJson(infoPlistPath, "CFBundleURLTypes", [
-    {
-      CFBundleURLName: APP_BUNDLE_ID,
-      CFBundleURLSchemes: APP_PROTOCOL_SCHEMES,
-    },
-  ]);
+  setPlistJson(
+    infoPlistPath,
+    "CFBundleURLTypes",
+    APP_PROTOCOL_SCHEMES.length === 0
+      ? []
+      : [{ CFBundleURLName: APP_BUNDLE_ID, CFBundleURLSchemes: APP_PROTOCOL_SCHEMES }],
+  );
 
   const resourcesDir = NodePath.join(appBundlePath, "Contents", "Resources");
   NodeFS.copyFileSync(iconPath, NodePath.join(resourcesDir, "icon.icns"));

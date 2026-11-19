@@ -3,6 +3,7 @@ import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 import * as NodeURL from "node:url";
 import * as NodeChildProcess from "node:child_process";
+import * as NodeSqlite from "node:sqlite";
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as Effect from "effect/Effect";
@@ -58,6 +59,12 @@ export const captureLauncherFor = Effect.fn("test.captureLauncher")(function* (
 
 export const captureLauncher = captureLauncherFor({ nodeScriptPath: "/fake/server.ts" });
 
+function holdLock(path: string) {
+  const db = new NodeSqlite.DatabaseSync(path);
+  db.exec("BEGIN EXCLUSIVE;");
+  return { [Symbol.dispose]: () => db.close() };
+}
+
 export function runLauncher(
   script: string,
   options: {
@@ -68,6 +75,9 @@ export function runLauncher(
     readonly clockJump?: number;
     readonly readyAt?: number;
     readonly initialPort?: number;
+    // A boot service between two servers holds the home with no runtime record yet.
+    readonly serviceServing?: boolean;
+    readonly allowFailure?: boolean;
     // The desktop publishes runtime and removes the marker right after the first runtime read.
     readonly publishAfterFirstRuntimeRead?: boolean;
   },
@@ -76,7 +86,7 @@ export function runLauncher(
   const home = NodeFS.mkdtempSync(NodePath.join(root, "packages/ssh/.ssh-launcher-test-"));
   try {
     const bin = NodePath.join(home, "bin");
-    const runtime = NodePath.join(home, ".t3/runtime");
+    const runtime = NodePath.join(home, ".u4/runtime");
     NodeFS.mkdirSync(bin);
     NodeFS.mkdirSync(runtime, { recursive: true });
     const markerPath = NodePath.join(runtime, "desktop-update-in-progress");
@@ -119,7 +129,7 @@ case "\${2:-}" in
     elif [ "$TEST_PUBLISH_AFTER_FIRST_READ" = 1 ]; then
       mkdir -p "\${2%/*}"
       printf '{}' > "$2"
-      rm -f "$HOME/.t3/runtime/desktop-update-in-progress"
+      rm -f "$HOME/.u4/runtime/desktop-update-in-progress"
       exit 1
     elif [ -n "$TEST_INITIAL_PORT" ]; then printf '%s %s' "$TEST_SERVER_PID" "$TEST_INITIAL_PORT"
     else exit 1; fi ;;
@@ -130,7 +140,7 @@ case "\${2:-}" in
   [0-9]*)
     NOW="$(cat "$HOME/clock")"
     printf 'probe %s %s\\n' "$2" "$NOW" >> "$HOME/events"
-    [ "$2" = 5999 ] || { [ "$2" = 4888 ] && { [ "$NOW" -ge "$TEST_READY_AT" ] || [ -e "$HOME/.t3/userdata/server-runtime.json" ]; }; } ;;
+    [ "$2" = 5999 ] || { [ "$2" = 4888 ] && { [ "$NOW" -ge "$TEST_READY_AT" ] || [ -e "$HOME/.u4/userdata/server-runtime.json" ]; }; } ;;
   */desktop-update-in-progress)
     printf 'marker %s\\n' "$(cat "$HOME/clock")" >> "$HOME/events"
     exec "$TEST_REAL_NODE" --require "$HOME/clock.cjs" "$@" ;;
@@ -142,7 +152,7 @@ esac`,
       `awk -v seconds="$1" '{ printf "%.0f", $1 + seconds * 1000 }' "$HOME/clock" > "$HOME/clock.next"
 mv "$HOME/clock.next" "$HOME/clock"
 if [ "$TEST_CLEAR_MARKER" = 1 ] && [ "$(cat "$HOME/clock")" -ge "$TEST_READY_AT" ]; then
-  rm -f "$HOME/.t3/runtime/desktop-update-in-progress"
+  rm -f "$HOME/.u4/runtime/desktop-update-in-progress"
 fi
 if [ -n "$TEST_CLOCK_JUMP" ] && [ ! -e "$HOME/jumped" ]; then
   printf '%s' "$TEST_CLOCK_JUMP" > "$HOME/clock"
@@ -154,13 +164,13 @@ fi`,
     executable(
       "ps",
       `if [ "$*" = "-ww -o args= -p $TEST_SERVER_PID" ]; then
-  printf '/bin/sh %s/.t3/ssh-launch/test-target/run-t3.sh serve --host 127.0.0.1 --port 5999\\n' "$HOME"
+  printf '/bin/sh %s/.u4/ssh-launch/test-target/run-t3.sh serve --host 127.0.0.1 --port 5999\\n' "$HOME"
   exit 0
 fi
 PATH=/usr/bin:/bin exec ps "$@"`,
     );
     if (options.recordedKind) {
-      const state = NodePath.join(home, ".t3/ssh-launch/test-target");
+      const state = NodePath.join(home, ".u4/ssh-launch/test-target");
       NodeFS.mkdirSync(state, { recursive: true });
       NodeFS.writeFileSync(NodePath.join(state, "pid"), String(process.pid));
       NodeFS.writeFileSync(NodePath.join(state, "port"), "5999");
@@ -171,9 +181,9 @@ PATH=/usr/bin:/bin exec ps "$@"`,
     }
     if (options.archive) {
       executable("node", 'printf "unexpected host node invocation\\n" >&2; exit 1');
-      const version = NodePath.join(home, ".t3/runtime/versions/1.2.3");
+      const version = NodePath.join(home, ".u4/runtime/versions/1.2.3-u4.8");
       NodeFS.mkdirSync(version, { recursive: true });
-      NodeFS.writeFileSync(NodePath.join(version, ".install-complete"), "1.2.3");
+      NodeFS.writeFileSync(NodePath.join(version, ".install-complete"), "1.2.3-u4.8");
       NodeFS.writeFileSync(
         NodePath.join(home, "helper.ts"),
         `
@@ -181,7 +191,7 @@ import * as Effect from "effect/Effect";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { Command } from "effect/cli";
 import { sshHelperCommand } from ${JSON.stringify(NodePath.join(root, "apps/server/src/cli/sshHelper.ts"))};
-await Effect.runPromise(Command.runWith(sshHelperCommand, { version: "1.2.3" })(process.argv.slice(2)).pipe(Effect.provide(NodeServices.layer)));
+await Effect.runPromise(Command.runWith(sshHelperCommand, { version: "1.2.3-u4.8" })(process.argv.slice(2)).pipe(Effect.provide(NodeServices.layer)));
 `,
       );
       NodeFS.writeFileSync(
@@ -192,6 +202,7 @@ if [ "$1" = --version ]; then printf 1.2.3; exit; fi
 [ "$1" = __ssh-helper ]
 case "$2" in
   update-remaining) printf 'marker %s\\n' "$(cat "$HOME/clock")" >> "$HOME/events"; exec "$TEST_REAL_NODE" --require "$HOME/clock.cjs" "$HOME/helper.ts" "$2" "$3" ;;
+  home-owned) exec "$TEST_REAL_NODE" "$HOME/helper.ts" "$2" "$3" ;;
   runtime-port | pick-port | wait-ready) exec "$HOME/bin/test-node" - "$3" ;;
   *) exit 1 ;;
 esac
@@ -199,6 +210,9 @@ esac
         { mode: 0o755 },
       );
     }
+    using _serving = options.serviceServing
+      ? holdLock(NodePath.join(runtime, "service-serving.lock"))
+      : undefined;
     const result = NodeChildProcess.spawnSync("/bin/sh", ["-s", "--", "test-target"], {
       input: `kill() {
   if [ "$1" = -0 ]; then command kill "$@"; else
@@ -222,12 +236,14 @@ ${script}`,
         TEST_PUBLISH_AFTER_FIRST_READ: options.publishAfterFirstRuntimeRead ? "1" : "0",
       },
     });
-    if (result.error || result.status !== 0)
+    if (result.error || (result.status !== 0 && !options.allowFailure))
       throw new Error(
         `launcher failed: ${result.error ?? result.status}\n${result.stderr}\n${result.stdout}\n${NodeFS.readFileSync(NodePath.join(home, "events"), "utf8")}`,
       );
     return {
-      output: JSON.parse(result.stdout.trim()),
+      status: result.status,
+      stderr: result.stderr,
+      output: result.status === 0 ? JSON.parse(result.stdout.trim()) : undefined,
       events: NodeFS.readFileSync(NodePath.join(home, "events"), "utf8").trim().split("\n"),
       now: Number(NodeFS.readFileSync(NodePath.join(home, "clock"), "utf8")),
       markerExists: NodeFS.existsSync(markerPath),

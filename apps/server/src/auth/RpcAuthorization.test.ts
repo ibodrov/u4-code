@@ -4,6 +4,7 @@ import {
   AuthFilesystemReadScope,
   AuthProvidersManageScope,
   AuthSettingsWriteScope,
+  AuthAccessWriteScope,
   DEFAULT_SERVER_SETTINGS,
   ProviderDriverKind,
   ProviderInstanceId,
@@ -32,14 +33,6 @@ import * as RpcAuthorization from "./RpcAuthorization.ts";
 
 describe("RPC authorization scopes", () => {
   it("declares exactly one scope for every RPC in the server group", () => {
-    for (const method of [
-      WS_METHODS.u4WorkspaceList,
-      WS_METHODS.u4WorkspaceLaunch,
-      WS_METHODS.u4WorkspaceLifecycle,
-      WS_METHODS.u4WorkspaceConnect,
-      WS_METHODS.u4WorkspaceExport,
-    ])
-      expect(requiredScopeForRpcMethod(method)).toBe(AuthEnvironmentMaintainScope);
     expect(new Set(Object.keys(RPC_REQUIRED_SCOPES))).toEqual(new Set(WsRpcGroup.requests.keys()));
   });
 
@@ -80,6 +73,25 @@ describe("RPC authorization scopes", () => {
     for (const method of [WS_METHODS.subscribeVcsBranch, WS_METHODS.vcsRefreshBranch]) {
       expect(requiredScopeForRpcMethod(method)).toBe(AuthOrchestrationReadScope);
     }
+  });
+
+  it("requires maintenance permission for every selective import operation", () => {
+    for (const method of [
+      WS_METHODS.u4T3ImportOpen,
+      WS_METHODS.u4T3ImportGetSession,
+      WS_METHODS.u4T3ImportListThreads,
+      WS_METHODS.u4T3ImportPreview,
+      WS_METHODS.u4T3ImportPreviewPage,
+      WS_METHODS.u4T3ImportStart,
+      WS_METHODS.u4T3ImportGetJob,
+      WS_METHODS.u4T3ImportCancel,
+      WS_METHODS.u4T3ImportClose,
+    ])
+      expect(requiredScopeForRpcMethod(method)).toBe(AuthEnvironmentMaintainScope);
+  });
+
+  it("still lets readers load settings the way installed Swift clients ask", () => {
+    expect(requiredScopeForRpcMethod("server.getSettings")).toBe(AuthOrchestrationReadScope);
   });
 
   it("rejects unknown RPC method names", () => {
@@ -271,35 +283,42 @@ describe("settings mutation authorization", () => {
     }),
   );
 
-  it.effect("does not let a settings grant create or remove providers or secret providers", () =>
-    Effect.gen(function* () {
-      let handled = false;
-      const client = yield* RpcTest.makeClient(group).pipe(
-        Effect.provide(
-          Layer.mergeAll(
-            group.toLayerHandler(WS_METHODS.serverUpdateSettings, () =>
-              Effect.sync(() => {
-                handled = true;
-                return DEFAULT_SERVER_SETTINGS;
-              }),
+  it.effect(
+    "does not let a settings grant manage providers or turn off T3 Connect device approval",
+    () =>
+      Effect.gen(function* () {
+        let handled = false;
+        const client = yield* RpcTest.makeClient(group).pipe(
+          Effect.provide(
+            Layer.mergeAll(
+              group.toLayerHandler(WS_METHODS.serverUpdateSettings, () =>
+                Effect.sync(() => {
+                  handled = true;
+                  return DEFAULT_SERVER_SETTINGS;
+                }),
+              ),
+              RpcAuthorization.layer([AuthSettingsWriteScope]),
             ),
-            RpcAuthorization.layer([AuthSettingsWriteScope]),
           ),
-        ),
-      );
-      expect(
-        yield* client[WS_METHODS.serverUpdateSettings]({
-          patch: {},
-          providerInstanceMutation,
-        }).pipe(Effect.flip),
-      ).toMatchObject({ requiredPermission: AuthProvidersManageScope });
-      expect(
-        yield* client[WS_METHODS.serverUpdateSettings]({
-          patch: { secretProviders: { [SecretProviderId.make("personal")]: null } },
-        }).pipe(Effect.flip),
-      ).toMatchObject({ requiredPermission: AuthProvidersManageScope });
-      expect(handled).toBe(false);
-    }),
+        );
+        expect(
+          yield* client[WS_METHODS.serverUpdateSettings]({
+            patch: {},
+            providerInstanceMutation,
+          }).pipe(Effect.flip),
+        ).toMatchObject({ requiredPermission: AuthProvidersManageScope });
+        expect(
+          yield* client[WS_METHODS.serverUpdateSettings]({
+            patch: { secretProviders: { [SecretProviderId.make("personal")]: null } },
+          }).pipe(Effect.flip),
+        ).toMatchObject({ requiredPermission: AuthProvidersManageScope });
+        expect(
+          yield* client[WS_METHODS.serverUpdateSettings]({
+            patch: { requireConnectDeviceApproval: false },
+          }).pipe(Effect.flip),
+        ).toMatchObject({ requiredPermission: AuthAccessWriteScope });
+        expect(handled).toBe(false);
+      }),
   );
 });
 

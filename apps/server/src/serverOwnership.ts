@@ -1,7 +1,7 @@
 // @effect-diagnostics nodeBuiltinImport:off - The ownership lock is a native SQLite handle held for the server's lifetime.
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
-import * as NodeSqlite from "node:sqlite";
+import { openExclusiveSqliteLock } from "./persistence/exclusiveSqliteLock.ts";
 
 import { SERVER_EXIT_CODE_STATE_DIR_OWNED } from "@t3tools/contracts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
@@ -181,25 +181,8 @@ const openOwnershipLock = (stateDir: string) =>
     try: () => {
       const lockPath = ownershipLockPath(stateDir);
       NodeFS.mkdirSync(stateDir, { recursive: true });
-      let before = NodeFS.statSync(lockPath, { bigint: true, throwIfNoEntry: false });
-      if (before === undefined) {
-        NodeFS.closeSync(NodeFS.openSync(lockPath, "a", 0o644));
-        before = NodeFS.statSync(lockPath, { bigint: true });
-      }
-      const db = new NodeSqlite.DatabaseSync(lockPath);
-      try {
-        // An idle service launcher probes this lock for a moment; wait out that probe.
-        db.exec("PRAGMA busy_timeout = 250; BEGIN EXCLUSIVE;");
-        const identity = NodeFS.statSync(lockPath, { bigint: true });
-        return {
-          db,
-          identity,
-          replacedDuringAcquire: before.dev !== identity.dev || before.ino !== identity.ino,
-        };
-      } catch (cause) {
-        db.close();
-        throw cause;
-      }
+      // An idle service launcher probes this lock briefly; wait out that probe.
+      return openExclusiveSqliteLock(lockPath, 250);
     },
     catch: (cause) =>
       isSqliteBusy(cause)

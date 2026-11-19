@@ -53,8 +53,13 @@ const machine = (
     Layer.succeed(
       ChildProcessSpawner.ChildProcessSpawner,
       ChildProcessSpawner.make((command) => {
-        const { command: name } = command as unknown as { readonly command: string };
-        const result = commands[name] ?? { stdout: "", exitCode: 127 };
+        const { command: name, args } = command as unknown as {
+          readonly command: string;
+          readonly args: ReadonlyArray<string>;
+        };
+        // `<command> <last argument>` answers for one file, such as plutil on one profile.
+        const result = commands[`${name} ${args.at(-1)}`] ??
+          commands[name] ?? { stdout: "", exitCode: 127 };
         return Effect.succeed(
           ChildProcessSpawner.makeHandle({
             pid: ChildProcessSpawner.ProcessId(1),
@@ -161,6 +166,40 @@ describe("readManagedPolicy", () => {
       assert.include(
         yield* read("darwin", profile, { "/usr/bin/plutil": { stdout: "", exitCode: 1 } }),
         "cannot be read",
+      );
+    }),
+  );
+
+  it.effect("ignores official T3 Code's macOS policy locations", () =>
+    Effect.gen(function* () {
+      const t3Profile = "/Library/Managed Preferences/com.t3tools.t3code.plist";
+      const t3File = "/Library/Application Support/T3Code/policy.json";
+      const u4Profile = "/Library/Managed Preferences/ca.ibodrov.u4code.plist";
+      const u4File = "/Library/Application Support/U4Code/policy.json";
+      assert.equal(MACOS_MANAGED_PREFERENCES_PATH, u4Profile);
+      assert.equal(managedPolicyPath("darwin"), u4File);
+      const organization = (name: string) =>
+        JSON.stringify({ schemaVersion: 1, organization: name });
+      // Both T3 sources at once would refuse to start T3; U4 must not see either.
+      const t3 = { [t3Profile]: "<binary plist>", [t3File]: organization("T3 file") };
+      const plutil = {
+        [`/usr/bin/plutil ${t3Profile}`]: { stdout: organization("T3 profile"), exitCode: 0 },
+        [`/usr/bin/plutil ${u4Profile}`]: { stdout: organization("U4 profile"), exitCode: 0 },
+      };
+      const loaded = (files: Readonly<Record<string, string>>) =>
+        readManagedPolicy("darwin").pipe(
+          Effect.map((found) => found && `${found.source}: ${found.document.organization}`),
+          Effect.provide(machine(files, plutil, {})),
+        );
+
+      assert.isUndefined(yield* loaded(t3));
+      assert.equal(
+        yield* loaded({ ...t3, [u4File]: organization("U4 file") }),
+        `${u4File}: U4 file`,
+      );
+      assert.equal(
+        yield* loaded({ ...t3, [u4Profile]: "<binary plist>" }),
+        `${u4Profile}: U4 profile`,
       );
     }),
   );

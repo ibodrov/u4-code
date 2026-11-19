@@ -2,9 +2,9 @@ import * as HostProcess from "@t3tools/shared/HostProcess";
 import {
   CLI_RELEASE_BASE_URL_ENV,
   CLI_RELEASE_CHANNELS,
-  cliReleaseIndexPageUrl,
+  isU4ReleaseVersion,
+  resolveU4ReleaseBaseUrl,
   cliReleaseChannelOf,
-  newestCliReleaseVersion,
   releaseAssetUrl,
   updateFeedFileName,
   type CliReleaseChannel,
@@ -18,12 +18,13 @@ import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 import { Argument, Command, Flag, GlobalFlag, Prompt } from "effect/cli";
-import { FetchHttpClient, HttpClient, HttpClientRequest, HttpClientResponse } from "effect/http";
+import { FetchHttpClient, HttpClient, HttpClientResponse } from "effect/http";
 
 import packageJson from "../../package.json" with { type: "json" };
 import * as BootService from "../cloud/bootService.ts";
 import {
   ensurePinnedRuntimeInstalled,
+  findPosixLauncher,
   launcherOwnsVersionsDir,
   pinnedRuntimeCommand,
   isUnpublishedRelease,
@@ -34,8 +35,9 @@ import {
   recordPinnedRuntimeLauncher,
   resolveLauncherPath,
   windowsShimTarget,
+  writePosixLauncher,
 } from "../cloud/pinnedRuntime.ts";
-import { compareExactServiceVersions, isExactServiceVersion } from "../cloud/serviceProtocol.ts";
+import { compareExactServiceVersions } from "../cloud/serviceProtocol.ts";
 import * as ManagedPolicy from "../policy/ManagedPolicy.ts";
 import { managedUpdateMirror, managedUpdateRefusal } from "../policy/managedUpdates.ts";
 import * as ProcessRunner from "../processRunner.ts";
@@ -46,56 +48,26 @@ import * as CliService from "./service.ts";
 
 export class CliUpdateError extends Schema.TaggedError<CliUpdateError>()("CliUpdateError", {
   reason: Schema.String,
+  cause: Schema.optional(Schema.Defect()),
 }) {
   override get message(): string {
     return this.reason;
   }
 }
 
-const ReleaseIndex = Schema.Array(
-  Schema.Struct({
-    tag_name: Schema.String,
-    draft: Schema.optional(Schema.Boolean),
-  }),
-);
-const decodeReleaseIndex = Schema.decodeUnknownEffect(Schema.fromJsonString(ReleaseIndex));
-
 const RELEASE_INDEX_TIMEOUT = Duration.seconds(30);
-const RELEASE_INDEX_MAX_PAGES = 10;
 
 export const resolveNewestVersion = Effect.fn("cli.update.resolve_newest")(function* (
   channel: CliReleaseChannel,
-) {
-  const httpClient = yield* HttpClient.HttpClient;
+): Effect.fn.Return<string, CliUpdateError, HttpClient.HttpClient> {
   const environment = yield* HostProcess.Environment;
-  const githubToken = environment.GH_TOKEN?.trim() || environment.GITHUB_TOKEN?.trim() || undefined;
-  for (let page = 1; page <= RELEASE_INDEX_MAX_PAGES; page += 1) {
-    const request = HttpClientRequest.get(cliReleaseIndexPageUrl(page)).pipe(
-      HttpClientRequest.setHeader("Accept", "application/vnd.github+json"),
-    );
-    const authenticatedRequest =
-      githubToken === undefined
-        ? request
-        : HttpClientRequest.setHeader(request, "Authorization", `Bearer ${githubToken}`);
-    const body = yield* httpClient.execute(authenticatedRequest).pipe(
-      Effect.flatMap(HttpClientResponse.filterStatusOk),
-      Effect.flatMap((response) => response.text),
-      Effect.mapError(() => new CliUpdateError({ reason: "Could not list t3 releases." })),
-      Effect.timeoutOrElse({
-        duration: RELEASE_INDEX_TIMEOUT,
-        orElse: () => Effect.fail(new CliUpdateError({ reason: "Timed out listing t3 releases." })),
-      }),
-    );
-    const releases = yield* decodeReleaseIndex(body).pipe(
-      Effect.mapError(
-        () => new CliUpdateError({ reason: "The t3 release index had an unexpected shape." }),
-      ),
-    );
-    const version = newestCliReleaseVersion(releases, channel);
-    if (version !== undefined) return version;
-    if (releases.length === 0) break;
-  }
-  return yield* new CliUpdateError({ reason: `No published ${channel} release was found.` });
+  const feedUrl = resolveU4ReleaseBaseUrl(undefined, environment[CLI_RELEASE_BASE_URL_ENV]);
+  if (feedUrl === undefined)
+    return yield* new CliUpdateError({
+      reason:
+        "No approved U4 release source is configured. Set U4CODE_RELEASE_BASE_URL or an update policy source, or install a verified U4 release manually.",
+    });
+  return yield* resolveMirrorVersion({ organization: "U4", feedUrl }, channel);
 });
 
 /** The version an update mirror's feed file for this platform offers on `channel`. */
@@ -108,13 +80,16 @@ export const resolveMirrorVersion = Effect.fn("cli.update.resolve_mirror")(funct
       reason: `${mirror.organization}'s update mirror has no preview builds.`,
     });
   }
+  const feedUrl = resolveU4ReleaseBaseUrl(mirror.feedUrl);
+  if (feedUrl === undefined)
+    return yield* new CliUpdateError({ reason: "Configure an approved U4 release source." });
   const httpClient = yield* HttpClient.HttpClient;
   const fileName = updateFeedFileName(
     channel === "nightly" ? "nightly" : "latest",
     yield* HostProcess.Platform,
     yield* HostProcess.Architecture,
   );
-  const url = releaseAssetUrl(mirror.feedUrl, fileName);
+  const url = releaseAssetUrl(feedUrl, fileName);
   // Not the URL, whose query can hold the mirror's access token.
   const unreadable = new CliUpdateError({
     reason: `Could not read ${fileName} from ${mirror.organization}'s update mirror.`,
@@ -131,7 +106,7 @@ export const resolveMirrorVersion = Effect.fn("cli.update.resolve_mirror")(funct
   const version = /^version:\s*["']?([^"'\s]+)/m.exec(body)?.[1];
   if (
     version === undefined ||
-    !isExactServiceVersion(version) ||
+    !isU4ReleaseVersion(version) ||
     cliReleaseChannelOf(version) !== channel
   ) {
     return yield* unreadable;
@@ -158,7 +133,7 @@ export const repointLauncher = Effect.fn("cli.update.repoint_launcher")(function
   const remember = (launcher: string) =>
     recordPinnedRuntimeLauncher({ baseDir: input.baseDir, launcher }).pipe(
       Effect.mapError(
-        () => new CliUpdateError({ reason: `Could not record the t3 launcher at ${launcher}.` }),
+        () => new CliUpdateError({ reason: `Could not record the u4 launcher at ${launcher}.` }),
       ),
     );
 
@@ -173,31 +148,32 @@ export const repointLauncher = Effect.fn("cli.update.repoint_launcher")(function
       .writeFileString(shimPath, `@echo off\r\n"${input.targetEntryPath}" %*`)
       .pipe(
         Effect.mapError(
-          () => new CliUpdateError({ reason: `Could not rewrite the t3 launcher at ${shimPath}.` }),
+          () => new CliUpdateError({ reason: `Could not rewrite the u4 launcher at ${shimPath}.` }),
         ),
       );
     return Option.some(shimPath);
   }
 
-  const linkTarget = yield* fs.readLink(input.launchedAs).pipe(Effect.option);
-  if (Option.isNone(linkTarget)) return Option.none<string>();
-  const resolvedTarget = path.resolve(path.dirname(input.launchedAs), linkTarget.value);
-  if (!ownsTarget(resolvedTarget)) return Option.none<string>();
-  yield* remember(input.launchedAs);
-  const tempLink = `${input.launchedAs}.${process.pid}.tmp`;
-  yield* fs.symlink(input.targetEntryPath, tempLink).pipe(
-    Effect.andThen(fs.rename(tempLink, input.launchedAs)),
+  const launcher = yield* findPosixLauncher({ launchedAs: input.launchedAs, versionsDir });
+  if (launcher === undefined) return Option.none<string>();
+  yield* remember(launcher);
+  yield* writePosixLauncher({
+    launcher,
+    executable: input.targetEntryPath,
+    exclusive: false,
+  }).pipe(
     Effect.mapError(
-      () =>
-        new CliUpdateError({ reason: `Could not repoint the t3 launcher at ${input.launchedAs}.` }),
+      (cause) =>
+        new CliUpdateError({ reason: `Could not repoint the u4 launcher at ${launcher}.`, cause }),
     ),
   );
-  return Option.some(input.launchedAs);
+  return Option.some(launcher);
 });
 
-/** Windows executables see their own path, so find the installer shim by matching t3.cmd targets on PATH. */
+/** Windows executables see their own path, so find the installer shim by matching installer shim targets on PATH. */
 export const findWindowsShim = Effect.fn("cli.update.find_windows_shim")(function* (
   executablePath: string,
+  shimName: "u4.cmd" | "t3.cmd" = "u4.cmd",
 ) {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
@@ -207,7 +183,7 @@ export const findWindowsShim = Effect.fn("cli.update.find_windows_shim")(functio
     ...(environment["PATH"] ?? environment["Path"] ?? "").split(";"),
   ].filter((entry) => entry.trim().length > 0);
   for (const directory of candidates) {
-    const shimPath = path.join(directory, "t3.cmd");
+    const shimPath = path.join(directory, shimName);
     const contents = yield* fs.readFileString(shimPath).pipe(Effect.option);
     if (Option.isNone(contents)) continue;
     const target = windowsShimTarget(contents.value);
@@ -225,7 +201,7 @@ const updateFlags = {
   ...projectLocationFlags,
   channel: Flag.Literals("channel", CLI_RELEASE_CHANNELS).pipe(
     Flag.withDescription(
-      "Release channel to follow. Defaults to the channel this t3 was published on.",
+      "Release channel to follow. Defaults to the channel this u4 was published on.",
     ),
     Flag.optional,
   ),
@@ -254,7 +230,7 @@ export const updateCommand = Command.make("update", {
   version: versionArgument,
 }).pipe(
   Command.withDescription(
-    "Download a newer t3 and switch this machine to it, including the background service when one is installed.",
+    "Download a newer u4 and switch this machine to it, including the background service when one is installed.",
   ),
   Command.withHandler((flags) =>
     Effect.gen(function* () {
@@ -302,7 +278,7 @@ const belongsToBootService = Effect.fn("cli.update.belongs_to_boot_service")(fun
   const runner = yield* ProcessRunner.ProcessRunner;
   if (platform === "linux") {
     const cgroup = yield* fs.readFileString(`/proc/${pid}/cgroup`).pipe(Effect.option);
-    return Option.isSome(cgroup) && cgroup.value.includes("/t3code.service");
+    return Option.isSome(cgroup) && cgroup.value.includes("/u4code.service");
   }
   if (platform === "darwin") {
     const parent = yield* runner
@@ -354,9 +330,9 @@ export const runUpdate = Effect.fn("cli.update.run")(function* (input: {
   if (refusal !== undefined) {
     return yield* new CliUpdateError({ reason: refusal });
   }
-  if (input.requestedVersion !== undefined && !isExactServiceVersion(input.requestedVersion)) {
+  if (input.requestedVersion !== undefined && !isU4ReleaseVersion(input.requestedVersion)) {
     return yield* new CliUpdateError({
-      reason: `'${input.requestedVersion}' is not an exact t3 version.`,
+      reason: `'${input.requestedVersion}' is not an exact U4 release version.`,
     });
   }
   const progress = createUpdateProgress();
@@ -374,10 +350,10 @@ export const runUpdate = Effect.fn("cli.update.run")(function* (input: {
   if (targetChannel === "preview" && currentChannel !== "preview") {
     yield* Console.log(
       [
-        `t3@${targetVersion} is a preview build.`,
+        `u4@${targetVersion} is a preview build.`,
         "  Preview builds are cut by maintainers from unreleased branches to exercise the release",
         "  pipeline. They can be broken, receive no fixes, and are never offered as updates; you",
-        `  will have to switch back to ${currentChannel} yourself with \`t3 update --channel ${currentChannel} --allow-downgrade\`.`,
+        `  will have to switch back to ${currentChannel} yourself with \`u4 update --channel ${currentChannel} --allow-downgrade\`.`,
       ].join("\n"),
     );
     if (!(process.stdin.isTTY && process.stdout.isTTY)) {
@@ -420,14 +396,14 @@ export const runUpdate = Effect.fn("cli.update.run")(function* (input: {
   if (executableCurrent && serviceCurrent) {
     yield* Console.log(
       serviceVersion !== undefined
-        ? `t3 and its background service are already on ${targetVersion} (${targetChannel}).`
-        : `t3 is already on ${targetVersion} (${targetChannel}).`,
+        ? `u4 and its background service are already on ${targetVersion} (${targetChannel}).`
+        : `u4 is already on ${targetVersion} (${targetChannel}).`,
     );
     return;
   }
   if (!input.allowDowngrade && compareExactServiceVersions(targetVersion, newestInstalled) < 0) {
     return yield* new CliUpdateError({
-      reason: `t3@${targetVersion} is older than the installed ${newestInstalled}. Pass --allow-downgrade to install it anyway.`,
+      reason: `u4@${targetVersion} is older than the installed ${newestInstalled}. Pass --allow-downgrade to install it anyway.`,
     });
   }
 
@@ -444,8 +420,8 @@ export const runUpdate = Effect.fn("cli.update.run")(function* (input: {
       : executableCurrent
         ? `Updating the background service ${serviceVersion ?? "(unknown version)"} -> ${targetVersion} (${targetChannel}).`
         : alreadyOnDisk
-          ? "Switching T3 Code"
-          : "Updating T3 Code",
+          ? "Switching U4 Code"
+          : "Updating U4 Code",
     executableCurrent
       ? ""
       : `${currentVersion} → ${targetVersion}${targetChannel === "stable" ? "" : ` (${targetChannel})`}`,
@@ -453,7 +429,7 @@ export const runUpdate = Effect.fn("cli.update.run")(function* (input: {
   let restartService = false;
   if (serviceInstalled && !serviceCurrent) {
     yield* Console.log(
-      "  A background service is installed for this T3 home. Restarting it interrupts anything running in it: agent turns, terminals, remote clients.",
+      "  A background service is installed for this U4 home. Restarting it interrupts anything running in it: agent turns, terminals, remote clients.",
     );
     if (input.assumeYes) {
       restartService = true;
@@ -466,7 +442,7 @@ export const runUpdate = Effect.fn("cli.update.run")(function* (input: {
       ).pipe(Effect.catchTags({ QuitError: () => Effect.succeed(false) }));
     } else {
       yield* Console.log(
-        "  Not a terminal, so the service keeps running its current version. Rerun with --yes to restart it now, or run `t3 service restart` later.",
+        "  Not a terminal, so the service keeps running its current version. Rerun with --yes to restart it now, or run `u4 service restart` later.",
       );
     }
   }
@@ -481,7 +457,7 @@ export const runUpdate = Effect.fn("cli.update.run")(function* (input: {
     httpClient,
     platform,
     arch,
-    releaseBaseUrl: mirror?.feedUrl ?? (environment[CLI_RELEASE_BASE_URL_ENV]?.trim() || undefined),
+    releaseBaseUrl: resolveU4ReleaseBaseUrl(mirror?.feedUrl, environment[CLI_RELEASE_BASE_URL_ENV]),
     requirePublishedRelease: mirror !== undefined,
     validate: (paths) =>
       runner
@@ -513,8 +489,8 @@ export const runUpdate = Effect.fn("cli.update.run")(function* (input: {
         new CliUpdateError({
           reason:
             mirror === undefined
-              ? `No release archive was published for t3@${targetVersion}.`
-              : `${mirror.organization}'s update mirror has no t3@${targetVersion} for this machine.`,
+              ? `No release archive was published for u4@${targetVersion}.`
+              : `${mirror.organization}'s update mirror has no u4@${targetVersion} for this machine.`,
         }),
       ),
     ),
@@ -550,7 +526,7 @@ export const runUpdate = Effect.fn("cli.update.run")(function* (input: {
       Effect.mapError(
         (error) =>
           new CliUpdateError({
-            reason: `t3@${targetVersion} is installed but the background service could not be ${restartService ? "updated" : "pointed at it"}: ${error.message}`,
+            reason: `u4@${targetVersion} is installed but the background service could not be ${restartService ? "updated" : "pointed at it"}: ${error.message}`,
           }),
       ),
     );
@@ -567,9 +543,9 @@ export const runUpdate = Effect.fn("cli.update.run")(function* (input: {
     });
   }
 
-  progress.success(`Installed T3 Code ${targetVersion}`);
+  progress.success(`Installed U4 Code ${targetVersion}`);
   if (Option.isSome(repointed)) {
-    yield* Console.log("  Run t3 to get started.\n");
+    yield* Console.log("  Run u4 to get started.\n");
   } else {
     yield* Console.log(`  Run ${runtime.entryPath}\n`);
   }
@@ -590,11 +566,11 @@ export const runUpdate = Effect.fn("cli.update.run")(function* (input: {
           ? `the version before ${serviceVersion}`
           : serviceVersion;
     yield* Console.log(
-      `  Background service still running ${running}. Run \`t3 service restart\` when you are ready to switch it to ${targetVersion}.`,
+      `  Background service still running ${running}. Run \`u4 service restart\` when you are ready to switch it to ${targetVersion}.`,
     );
   } else if (status.installed && !servesThisHome) {
     yield* Console.log(
-      `  The background service serves ${status.installedBaseDir ?? "another T3 home"} and was left unchanged.`,
+      `  The background service serves ${status.installedBaseDir ?? "another U4 home"} and was left unchanged.`,
     );
   }
   if (foreground !== undefined) {

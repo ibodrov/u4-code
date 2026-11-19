@@ -1,4 +1,5 @@
 import type { ManagedPolicyDocument } from "@t3tools/contracts";
+import { PRODUCT_APP_ID, PRODUCT_BASE_NAME } from "@t3tools/shared/productIdentity";
 import {
   WINDOWS_POLICY_KEY,
   WINDOWS_POLICY_GROUPS,
@@ -337,7 +338,7 @@ const nullPath = (
   return undefined;
 };
 
-/** A device configuration profile that installs `document` for `com.t3tools.t3code`. */
+/** A device configuration profile that installs `document` for `PRODUCT_APP_ID`. */
 export function macosProfile(
   document: ManagedPolicyDocument,
   uuids: { readonly profile: string; readonly payload: string },
@@ -357,17 +358,17 @@ export function macosProfile(
   const profile = {
     PayloadContent: [
       {
-        PayloadDisplayName: "T3 Code policy",
-        PayloadIdentifier: `com.t3tools.t3code.policy.${uuids.payload}`,
-        PayloadType: "com.t3tools.t3code",
+        PayloadDisplayName: `${PRODUCT_BASE_NAME} policy`,
+        PayloadIdentifier: `${PRODUCT_APP_ID}.policy.${uuids.payload}`,
+        PayloadType: PRODUCT_APP_ID,
         PayloadUUID: uuids.payload,
         PayloadVersion: 1,
         ...document,
       },
     ],
-    PayloadDescription: "Configures T3 Code for every user on this Mac.",
-    PayloadDisplayName: `T3 Code policy for ${document.organization}`,
-    PayloadIdentifier: `com.t3tools.t3code.policy`,
+    PayloadDescription: `Configures ${PRODUCT_BASE_NAME} for every user on this Mac.`,
+    PayloadDisplayName: `${PRODUCT_BASE_NAME} policy for ${document.organization}`,
+    PayloadIdentifier: `${PRODUCT_APP_ID}.policy`,
     PayloadOrganization: document.organization,
     PayloadScope: "System",
     PayloadType: "Configuration",

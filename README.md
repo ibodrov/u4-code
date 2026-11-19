@@ -1,6 +1,6 @@
 # U4 Code
 
-U4 Code is a desktop and web app for the coding agents on your machines. It drives the agent CLIs you already use, such as Claude Code, Codex, Cursor, OpenCode and oh-my-pi, from one fast interface, and can run project workspaces on your own Kubernetes cluster.
+U4 Code is a desktop and web app for the coding agents on your machines. It drives the agent CLIs you already use, such as Claude Code, Codex, Cursor, OpenCode and oh-my-pi, from one fast interface.
 
 > **Fork notice.** U4 Code is an independent fork of [T3 Code](https://github.com/pingdotgg/t3code) by T3 Tools Inc. It is not affiliated with or endorsed by T3 Tools Inc. U4 Code is distributed under the [MIT License](./LICENSE), and the original T3 Tools Inc. copyright notice is retained. [U4.md](./U4.md) explains what differs from T3 Code and how the fork is maintained.
 
@@ -10,7 +10,6 @@ U4 Code is a desktop and web app for the coding agents on your machines. It driv
 - **Every agent in one place.** Claude Code, Codex, Cursor, OpenCode, Grok Build, Antigravity, Kiro, Pi, Muse Code, fx, any [ACP](./docs/user/providers-acp.md) agent, and the U4-only [oh-my-pi](./docs/user/providers-oh-my-pi.md) provider.
 - **Desktop and web.** One server, and every client shows the same threads.
 - **Remote ready.** Run agents on another machine and connect over your local network or Tailscale. See [remote access](./docs/user/remote-access.md).
-- **Kubernetes workspaces.** Run a project in a retained workspace on your own cluster. See [U4 Kubernetes workspaces](./docs/user/remote-access.md#u4-kubernetes-workspaces).
 - **Git built in.** Each thread can work in its own worktree. Review the diff, then commit, push, and open a pull request.
 - **Side by side with T3 Code.** U4 Code keeps its own state, ports and URL schemes, so both apps can run on one account.
 
@@ -38,7 +37,8 @@ The documentation comes from T3 Code. Pages about T3 downloads, the mobile apps 
 
 ## Development
 
-- [U4.md](./U4.md) covers building, installing, and rebasing the fork onto upstream releases.
+- [U4.md](./U4.md) covers building and maintaining the fork. Start U4 changes from `origin/main`
+  and [target U4's `main`](./U4.md#contributing-to-u4) when opening a pull request.
 - The [development runbook](./docs/operations/development.md#first-checkout) and the [architecture overview](./docs/internals/overview.md) come from T3 Code and also apply to U4 Code.
 - Report problems that also happen in T3 Code upstream at [pingdotgg/t3code](https://github.com/pingdotgg/t3code).
 

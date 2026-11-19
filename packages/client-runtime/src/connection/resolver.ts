@@ -5,7 +5,6 @@ import type {
 import { withRelayClientTracing } from "@t3tools/shared/relayTracing";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
-import * as Clock from "effect/Clock";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
@@ -146,15 +145,6 @@ const makeBearerBroker = Effect.fn("clientRuntime.connection.broker.makeBearer")
         actual: profile.environmentId,
       });
     }
-    if (
-      profile.bootstrapExpiresAt !== undefined &&
-      profile.bootstrapExpiresAt <= (yield* Clock.currentTimeMillis)
-    )
-      return yield* new ConnectionBlockedError({
-        reason: "configuration",
-        detail:
-          "This local Kubernetes bootstrap route expired. Start a new bootstrap from its managing environment.",
-      });
     if (profile.authorization === "t3-connect") {
       const authorized = yield* remote.authorizeDpop({
         expectedEnvironmentId: target.environmentId,

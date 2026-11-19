@@ -2,7 +2,7 @@
   "customNotices": [
     {
       "name": "T3 Code",
-      "bundles": ["desktop", "server", "web"],
+      "bundles": ["desktop", "server", "web", "mobile"],
       "license": "MIT",
       "sourceUrl": "https://github.com/pingdotgg/t3code",
       "noticeFile": "LICENSE"

@@ -1,7 +1,3 @@
-import { useAtomValue } from "@effect/atom-react";
-import { useEnvironment } from "~/state/environments";
-import { u4Kubernetes } from "~/state/u4Kubernetes";
-import { openKubernetesWorkspace } from "./U4KubernetesWorkspaces";
 import { writeTextToClipboard } from "../hooks/useCopyToClipboard";
 import { formatFilePathForClipboard } from "@t3tools/client-runtime/media-actions";
 import { readLocalApi } from "../localApi";
@@ -121,15 +117,7 @@ function showWorkspaceContextMenu(event: ReactMouseEvent, workspacePath: string)
       if (action !== "copy-path") return;
       const clipboardPath = formatFilePathForClipboard(workspacePath);
       void writeTextToClipboard(clipboardPath, "workspace path").then(
-        (didCopy) => {
-          if (didCopy) {
-            toastManager.add({
-              type: "success",
-              title: "Path copied",
-              description: clipboardPath,
-            });
-          }
-        },
+        undefined,
         (error: unknown) => {
           toastManager.add(
             stackedThreadToast({
@@ -164,7 +152,6 @@ interface RunContextSelectorProps {
   onUsePreviousWorktree: () => void;
   addTargets: readonly AddProjectTarget[];
   onAddToMachine: (environmentId: EnvironmentId) => void;
-  onKubernetesWorkspace?: (() => void) | undefined;
 }
 
 const RunContextSelector = memo(function RunContextSelector({
@@ -188,7 +175,6 @@ const RunContextSelector = memo(function RunContextSelector({
   onUsePreviousWorktree,
   addTargets,
   onAddToMachine,
-  onKubernetesWorkspace,
 }: RunContextSelectorProps) {
   const composerFloatingLayerProps = useComposerMenuProps();
   const activeEnvironment =
@@ -306,7 +292,7 @@ const RunContextSelector = memo(function RunContextSelector({
         }
         data-composer-context-control
         data-composer-shortcut={[
-          (showEnvironmentPicker || onKubernetesWorkspace) && !envLocked ? "composer.host" : "",
+          showEnvironmentPicker && !envLocked ? "composer.host" : "",
           !envModeLocked ? "composer.workspace" : "",
         ].join(" ")}
       >
@@ -325,9 +311,7 @@ const RunContextSelector = memo(function RunContextSelector({
         {...(!isPanel ? composerFloatingLayerProps : {})}
       >
         {availableEnvironments &&
-        ((showEnvironmentPicker && onEnvironmentChange) ||
-          addTargets.length > 0 ||
-          onKubernetesWorkspace) ? (
+        ((showEnvironmentPicker && onEnvironmentChange) || addTargets.length > 0) ? (
           <>
             <MenuGroup>
               <MenuGroupLabel>Run on</MenuGroupLabel>
@@ -372,11 +356,6 @@ const RunContextSelector = memo(function RunContextSelector({
                   </MenuRadioItem>
                 ))}
               </MenuRadioGroup>
-              {onKubernetesWorkspace ? (
-                <MenuItem disabled={envLocked} onClick={onKubernetesWorkspace}>
-                  Kubernetes workspace
-                </MenuItem>
-              ) : null}
               {addTargets.length > 0 ? (
                 <MenuSub>
                   <MenuSubTrigger>
@@ -638,12 +617,6 @@ export const BranchToolbar = memo(function BranchToolbar({
   // The composer retains resolved thread details while bootstrap cleanup can remove its shell.
   const activeProjectRef = scopeProjectRef(environmentId, projectId);
   const activeProject = useProject(activeProjectRef);
-  const environment = useEnvironment(environmentId);
-  const mayManageKubernetes = useAtomValue(u4Kubernetes.launch.permissionAtom(environmentId));
-  const onKubernetesWorkspace =
-    environment?.serverConfig?.environment.capabilities.u4Kubernetes && mayManageKubernetes
-      ? () => openKubernetesWorkspace(activeProjectRef)
-      : undefined;
   const activeWorktreePath = forceNewWorktree ? null : worktreePath;
   const effectiveEnvMode = forceNewWorktree ? "worktree" : envMode;
   const envModeLocked = envLocked || (isServerThread && activeWorktreePath !== null);
@@ -732,7 +705,6 @@ export const BranchToolbar = memo(function BranchToolbar({
             onUsePreviousWorktree={onUsePreviousWorktree}
             addTargets={addTargets}
             onAddToMachine={onAddToMachine}
-            onKubernetesWorkspace={onKubernetesWorkspace}
           />
         ) : null}
         {panelSection !== "workspace" ? (
@@ -783,7 +755,6 @@ export const BranchToolbar = memo(function BranchToolbar({
             onUsePreviousWorktree={onUsePreviousWorktree}
             addTargets={addTargets}
             onAddToMachine={onAddToMachine}
-            onKubernetesWorkspace={onKubernetesWorkspace}
           />
         </div>
       ) : null}
@@ -798,7 +769,6 @@ export const BranchToolbar = memo(function BranchToolbar({
           {showEnvironmentIndicator && availableEnvironments && (
             <>
               <BranchToolbarEnvironmentSelector
-                onKubernetesWorkspace={onKubernetesWorkspace}
                 autoEnvironmentLabel={autoEnvironmentLabel}
                 onAutoEnvironment={onAutoEnvironment}
                 envLocked={envLocked}

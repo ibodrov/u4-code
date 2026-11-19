@@ -36,6 +36,7 @@ export type SettingsPath =
   | "/settings/connections"
   | "/settings/access"
   | "/settings/secrets"
+  | "/settings/import"
   | "/settings/maintenance"
   | "/settings/labs"
   | "/settings/about"
@@ -74,6 +75,7 @@ export interface SettingsSearchItem {
   readonly textGeneratorsOnly?: boolean;
   readonly secondary?: boolean;
   readonly requiresThreadAutoSettlement?: boolean;
+  readonly requiresT3Import?: boolean;
 }
 
 export interface SettingsSearchAvailability {
@@ -84,6 +86,7 @@ export interface SettingsSearchAvailability {
   readonly canManageLocalBackend: boolean;
   readonly isWslSettingsRowVisible: boolean;
   readonly hasThreadAutoSettlement: boolean;
+  readonly hasT3Import?: boolean;
   readonly managedTunnelActive?: boolean;
   readonly hasPeerLinkHost?: boolean;
   readonly hasFastWorktreeCheckoutEnvironment?: boolean;
@@ -112,6 +115,7 @@ export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
   "/settings/access": msg("Sharing & access"),
   "/settings/secrets": msg("Secrets"),
   "/settings/maintenance": msg("Maintenance"),
+  "/settings/import": msg("Import from T3 Code"),
   "/settings/labs": msg("Labs"),
   "/settings/about": msg("About"),
   "/settings/voice": msg("Voice"),
@@ -162,7 +166,13 @@ export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
   {
     heading: msg("More"),
     headingHidden: true,
-    paths: ["/settings/maintenance", "/settings/labs", "/settings/about", "/settings/archived"],
+    paths: [
+      "/settings/import",
+      "/settings/maintenance",
+      "/settings/labs",
+      "/settings/about",
+      "/settings/archived",
+    ],
   },
 ];
 
@@ -228,6 +238,15 @@ const SOURCE_CONTROL_HOST_TERMS = sourceControlClients.definitions
   .join(" ");
 
 export const SETTINGS_SEARCH_ITEMS = [
+  {
+    id: "t3-import",
+    title: "Import from T3 Code",
+    to: "/settings/import",
+    scope: "environment",
+    environmentOnly: true,
+    requiresT3Import: true,
+    searchTerms: ["migrate transfer projects threads history T3"],
+  },
   {
     id: "storage-worktree-keep-when",
     targetId: "storage-worktrees",
@@ -624,6 +643,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     title: "Transcription hardware and model unloading",
     to: "/settings/voice",
     searchTerms: ["speech voice stt advanced gpu cpu acceleration memory unload idle"],
+  },
+  {
+    id: "speech-streaming",
+    title: "Streaming transcription",
+    to: "/settings/voice",
+    searchTerms: ["speech voice stt advanced native live preview batch after stopping slow lag"],
   },
   {
     id: "microphone-test",
@@ -1283,6 +1308,15 @@ export const SETTINGS_SEARCH_ITEMS = [
     cloudOnly: true,
   },
   {
+    id: "connect-device-approval",
+    title: "Require approval for new devices",
+    to: "/settings/access",
+    targetId: "connections-environment",
+    searchTerms: ["t3 connect devices approve deny trust revoke pairing code security account"],
+    cloudOnly: true,
+    managedTunnelOnly: true,
+  },
+  {
     id: "hold-webhooks-while-offline",
     localEnvironmentOnly: true,
     title: "Hold webhooks while offline",
@@ -1367,6 +1401,7 @@ export type SettingsSearchItemId = (typeof SETTINGS_SEARCH_ITEMS)[number]["id"];
 const SEARCH_ITEMS_BY_ID = new Map(SETTINGS_SEARCH_ITEMS.map((item) => [item.id, item] as const));
 
 const SETTINGS_CATEGORY_SCOPES: Readonly<Record<SettingsPath, SettingsSearchScope | null>> = {
+  "/settings/import": "environment",
   "/settings/diagnostics": "environment",
   "/settings/projects": "project",
   "/settings/general": null,
@@ -1512,6 +1547,7 @@ export function filterAvailableSettingsSearchItems(
       (!item.primaryEnvironmentOnly || availability.hasPrimaryEnvironment === true) &&
       (!item.wslAvailableOnly || availability.isWslSettingsRowVisible) &&
       (!item.requiresThreadAutoSettlement || availability.hasThreadAutoSettlement) &&
+      (!item.requiresT3Import || availability.hasT3Import === true) &&
       (!item.managedTunnelOnly || availability.managedTunnelActive === true) &&
       (!item.peerLinksOnly || availability.hasPeerLinkHost === true) &&
       (!item.fastWorktreeCheckoutOnly ||

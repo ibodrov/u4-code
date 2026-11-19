@@ -1,4 +1,5 @@
 import {
+  DESKTOP_UPDATE_IN_PROGRESS_MARKER_FILE,
   ServerSelfUpdateError,
   type ServerSelfUpdateCapability,
   type ServerSelfUpdateInput,
@@ -22,6 +23,8 @@ import { HttpClient } from "effect/http";
 
 import {
   CLI_RELEASE_BASE_URL_ENV,
+  isU4ReleaseVersion,
+  resolveU4ReleaseBaseUrl,
   cliReleaseChannelOf,
   crossesReleaseTrack,
 } from "@t3tools/shared/cliRelease";
@@ -29,6 +32,7 @@ import {
 import packageJson from "../../package.json" with { type: "json" };
 import * as ServerConfig from "../config.ts";
 import * as DesktopAppUpdate from "../desktopUpdate/DesktopAppUpdate.ts";
+import * as DesktopUpdateMarker from "../desktopUpdate/DesktopUpdateMarker.ts";
 import { databaseMigrationHead } from "../persistence/databaseMigrationHead.ts";
 import * as ManagedPolicy from "../policy/ManagedPolicy.ts";
 import { managedUpdateMirror, managedUpdateRefusal } from "../policy/managedUpdates.ts";
@@ -45,7 +49,6 @@ import {
 import { bootServiceProgramOf, bootServiceUnitPath } from "./bootService.ts";
 import { decodeServicePreflightResult } from "./servicePreflight.ts";
 import * as ServiceLauncherClient from "./serviceLauncherClient.ts";
-import { isExactServiceVersion } from "./serviceProtocol.ts";
 
 // A staged runtime's cold start can take over a minute on a loaded, swapping host.
 const PREFLIGHT_TIMEOUT = Duration.minutes(3);
@@ -131,10 +134,10 @@ export function trackSwitchBlockReason(input: {
   if (!crossesReleaseTrack(input.serverVersion, input.targetVersion)) return null;
   const databaseMigration = input.databaseMigration();
   if (input.targetDatabaseMigration === undefined || databaseMigration === undefined) {
-    return `Cannot confirm this database works with t3@${input.targetVersion}. Switch tracks from Settings → About → Update track, which checks it first.`;
+    return `Cannot confirm this database works with u4@${input.targetVersion}. Switch tracks from Settings → About → Update track, which checks it first.`;
   }
   return input.targetDatabaseMigration < databaseMigration
-    ? `This database has changes t3@${input.targetVersion} does not support yet; it stays on this release.`
+    ? `This database has changes u4@${input.targetVersion} does not support yet; it stays on this release.`
     : null;
 }
 
@@ -150,9 +153,10 @@ export const make = Effect.fn("cloud.server_self_update.make")(function* () {
   const arch = yield* HostProcess.Architecture;
   const httpClient = yield* HttpClient.HttpClient;
   const mirror = managedUpdateMirror(policy.document);
-  const releaseBaseUrl =
-    mirror?.feedUrl ??
-    Option.getOrUndefined(yield* Config.String(CLI_RELEASE_BASE_URL_ENV).pipe(Config.option));
+  const releaseBaseUrl = resolveU4ReleaseBaseUrl(
+    mirror?.feedUrl,
+    Option.getOrUndefined(yield* Config.String(CLI_RELEASE_BASE_URL_ENV).pipe(Config.option)),
+  );
   const inFlight = yield* Ref.make(false);
 
   yield* pruneRuntimesOnStart({ baseDir: serverConfig.baseDir, managed: launcher.managed }).pipe(
@@ -184,6 +188,9 @@ export const make = Effect.fn("cloud.server_self_update.make")(function* () {
     if (policyRefusal !== undefined) {
       return yield* failWith(policyRefusal);
     }
+    const targetVersion = input.targetVersion.trim();
+    if (!isU4ReleaseVersion(targetVersion))
+      return yield* failWith(`'${targetVersion}' is not an exact U4 release version.`);
     if (capability === "desktop-managed") {
       const unsafeCrossing = input.channel === undefined ? null : crossesTrackUnsafely(input);
       if (unsafeCrossing !== null) return yield* failWith(unsafeCrossing);
@@ -196,23 +203,19 @@ export const make = Effect.fn("cloud.server_self_update.make")(function* () {
         );
       }
       return yield* failWith(
-        "This server is managed by the T3 Code desktop app on its machine; update the desktop app to update it.",
+        "This server is managed by the U4 Code desktop app on its machine; update the desktop app to update it.",
       );
     }
     // The target must accept the launcher that will run it, which can be older than this server.
     const launcherProtocol = launcher.protocol;
     if (capability === null || launcherProtocol === undefined) {
       return yield* failWith(
-        "Remote updates require the T3 Code background service. Run `t3 service install` on the server machine.",
+        "Remote updates require the U4 Code background service. Run `u4 service install` on the server machine.",
       );
     }
 
     const unsafeCrossing = crossesTrackUnsafely(input);
     if (unsafeCrossing !== null) return yield* failWith(unsafeCrossing);
-    const targetVersion = input.targetVersion.trim();
-    if (!isExactServiceVersion(targetVersion)) {
-      return yield* failWith(`'${targetVersion}' is not an exact t3 version.`);
-    }
     if (yield* Ref.getAndSet(inFlight, true)) {
       return yield* failWith("A server update is already in progress.");
     }
@@ -228,7 +231,7 @@ export const make = Effect.fn("cloud.server_self_update.make")(function* () {
         httpClient,
         platform,
         arch,
-        releaseBaseUrl,
+        releaseBaseUrl: releaseBaseUrl ?? "",
         requirePublishedRelease: mirror !== undefined,
         validate: (runtime) =>
           runner
@@ -306,7 +309,7 @@ export const make = Effect.fn("cloud.server_self_update.make")(function* () {
           }
           if (mirror !== undefined && isUnpublishedRelease(error)) {
             return failWith(
-              `${mirror.organization}'s update mirror has no t3@${targetVersion} for this machine.`,
+              `${mirror.organization}'s update mirror has no u4@${targetVersion} for this machine.`,
               error,
             );
           }
@@ -317,12 +320,16 @@ export const make = Effect.fn("cloud.server_self_update.make")(function* () {
             .filter((part) => part !== undefined)
             .join(" ");
           return failWith(
-            `Could not prepare t3@${targetVersion} while ${error.step}${downloadFailure ? ` (${downloadFailure})` : ""}.`,
+            `Could not prepare u4@${targetVersion} while ${error.step}${downloadFailure ? ` (${downloadFailure})` : ""}.`,
             error,
           );
         }),
       );
 
+      if (input.stageOnly === true) {
+        yield* Ref.set(inFlight, false);
+        return { targetVersion, method: "boot-service" as const };
+      }
       yield* reportProgress("installing");
       const updateId = yield* Effect.uninterruptible(
         launcher.requestUpdate({ targetVersion, dbPath: serverConfig.dbPath }).pipe(
@@ -333,6 +340,13 @@ export const make = Effect.fn("cloud.server_self_update.make")(function* () {
                 : "Could not ask the service launcher to activate the prepared update.",
               error,
             ),
+          ),
+          // The launcher stops this server next; one from before its serving lock holds nothing
+          // until the new server starts, so this marker is what an SSH launch waits on.
+          Effect.tap(() =>
+            DesktopUpdateMarker.publish(
+              path.join(serverConfig.baseDir, "runtime", DESKTOP_UPDATE_IN_PROGRESS_MARKER_FILE),
+            ).pipe(Effect.provideService(FileSystem.FileSystem, fs), Effect.ignore({ log: true })),
           ),
           Effect.tap(() => onHandoffAccepted()),
         ),

@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+<g transform="translate(112.64 112.64) scale(0.78)">
+<path class="four" fill="#C9BEFF" d="M576 384H704V448H768V576H704V832H576V576H512V448H576Z"/>
+<path class="u" fill="#FFFFFF" d="M256 192H384V384A64 64 0 0 0 448 448H512A64 64 0 0 0 576 384V192H704V384A192 192 0 0 1 512 576H448A192 192 0 0 1 256 384Z"/>
+</g>
+</svg>

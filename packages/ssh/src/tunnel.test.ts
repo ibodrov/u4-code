@@ -96,7 +96,10 @@ function commandArgs(command: ChildProcess.Command): ReadonlyArray<string> {
   return command._tag === "StandardCommand" ? command.args.map(String) : [];
 }
 
-const ARCHIVE = { archiveVersion: "1.2.3-preview.20260911.4" } as const;
+const ARCHIVE = {
+  archiveVersion: "1.2.3-u4.8",
+  releaseBaseUrl: "https://updates.example/releases",
+} as const;
 
 // Emulates `t3 serve`: it takes the home owner lock at startup, then binds
 // once a second server has tried the same home (or after 2s), so a concurrent
@@ -137,7 +140,7 @@ serve(40);
 // The launch's POSIX bootstrap without the account login shell around it, so the
 // test machine's login profile cannot move HOME.
 const launchStateKey = (command: ChildProcess.Command) =>
-  /exec sh -s -- (\S+)"/u.exec(commandArgs(command).join(" "))?.[1];
+  /exec sh -s -- ([^"]+)"/u.exec(commandArgs(command).join(" "))?.[1];
 
 // Runs the remote half of an SSH launch as a local shell
 // whose HOME is the given directory. Every launch after the first starts once
@@ -221,6 +224,134 @@ describe("ssh tunnel scripts", () => {
     }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
 
+  it.each(["cached", "missing", "private-failure", "archive-failure"] as const)(
+    "keeps U4 runner source decisions on the download path: %s",
+    (mode) => {
+      const root = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "u4-ssh-source-"));
+      try {
+        const home = NodePath.join(root, "home");
+        const bin = NodePath.join(root, "bin");
+        const runtime = NodePath.join(home, ".u4/runtime/versions/0.1.10-u4.8");
+        NodeFS.mkdirSync(bin, { recursive: true });
+        NodeFS.mkdirSync(home);
+        NodeFS.writeFileSync(
+          NodePath.join(bin, "uname"),
+          '#!/bin/sh\ncase "$1" in -s) echo Linux ;; -m) echo x86_64 ;; esac\n',
+          { mode: 0o755 },
+        );
+        NodeFS.writeFileSync(
+          NodePath.join(bin, "curl"),
+          '#!/bin/sh\nprintf "%s\\n" "$*" >> "$HOME/requests"\n' +
+            (mode === "archive-failure"
+              ? 'case "$*" in *SHA256SUMS*) for last; do :; done; printf "%s  t3-0.1.10-u4.8-linux-x64.tar.gz\\n" "' +
+                "a".repeat(64) +
+                '" > "$last"; exit 0 ;; esac\n'
+              : "") +
+            "exit 22\n",
+          { mode: 0o755 },
+        );
+        if (mode === "cached") {
+          NodeFS.mkdirSync(runtime, { recursive: true });
+          NodeFS.writeFileSync(NodePath.join(runtime, "t3"), "#!/bin/sh\necho cached-u4\n", {
+            mode: 0o755,
+          });
+          NodeFS.writeFileSync(NodePath.join(runtime, ".install-complete"), "0.1.10-u4.8\n");
+        }
+        const script = SshTunnel.buildRemoteT3RunnerScript({
+          archiveVersion: "0.1.10-u4.8",
+          ...(mode === "private-failure" || mode === "archive-failure"
+            ? {
+                releaseBaseUrl:
+                  "https://updates.example/releases?token=secret&label=REMOTE_ARCHIVE",
+              }
+            : {}),
+        });
+        const result = NodeChildProcess.spawnSync("sh", ["-c", script, "sh", "--version"], {
+          encoding: "utf8",
+          env: { HOME: home, PATH: `${bin}:/usr/bin:/bin` },
+        });
+        const requests = NodeFS.existsSync(NodePath.join(home, "requests"))
+          ? NodeFS.readFileSync(NodePath.join(home, "requests"), "utf8")
+          : "";
+        assert.notInclude(script, "t3.codes");
+        assert.notInclude(script, "$HOME/.t3");
+        assert.equal(result.status, mode === "cached" ? 0 : 1);
+        if (mode === "cached") assert.equal(result.stdout.trim(), "cached-u4");
+        if (mode === "missing") assert.include(result.stderr, "U4 release source");
+        if (mode === "private-failure" || mode === "archive-failure") {
+          assert.include(
+            requests,
+            "https://updates.example/releases/0.1.10-u4.8/SHA256SUMS?token=secret&label=REMOTE_ARCHIVE",
+          );
+          if (mode === "archive-failure")
+            assert.include(
+              requests,
+              "https://updates.example/releases/0.1.10-u4.8/t3-0.1.10-u4.8-linux-x64.tar.gz?token=secret&label=REMOTE_ARCHIVE",
+            );
+          assert.equal(requests.trim().split("\n").length, mode === "archive-failure" ? 2 : 1);
+          assert.notInclude(result.stderr, "secret");
+        } else assert.equal(requests, "");
+        assert.isFalse(NodeFS.existsSync(NodePath.join(home, ".t3")));
+      } finally {
+        NodeFS.rmSync(root, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it.live("reports only the failed launch's own output, not an earlier launch's log", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const home = yield* fs.makeTempDirectoryScoped({ prefix: "t3-ssh-launch-log-" });
+      const target = { alias: "devbox", hostname: "devbox", username: null, port: null };
+      const stateDir = NodePath.join(home, ".u4", "ssh-launch", yield* remoteStateKey(target));
+      const bin = NodePath.join(home, "bin");
+      yield* fs.makeDirectory(stateDir, { recursive: true });
+      yield* fs.makeDirectory(bin);
+      yield* fs.writeFileString(NodePath.join(stateDir, "server.log"), "EARLIER_LAUNCH\n");
+      // The new server exits without output. Readiness then fails after a process from the
+      // earlier launch writes through the log descriptor it still holds (fd 3).
+      yield* fs.writeFileString(
+        NodePath.join(bin, "node"),
+        '#!/bin/sh\n[ "$1" = - ] || exit 0\ncat >/dev/null\ncase "$2" in\n  */port) echo 37731 ;;\n  37731) { printf "EARLIER_PROCESS\\n" >&3; } 2>/dev/null; exit 1 ;;\n  *) exit 1 ;;\nesac\n',
+        { mode: 0o755 },
+      );
+      const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+      const remoteShell = ChildProcessSpawner.make((command) => {
+        if (command._tag !== "StandardCommand") return spawner.spawn(command);
+        return spawner.spawn(
+          ChildProcess.make(
+            "sh",
+            [
+              "-c",
+              'exec 3>>"$1/server.log"; exec sh -s -- "$2"',
+              "sh",
+              stateDir,
+              launchStateKey(command) ?? "",
+            ],
+            {
+              ...command.options,
+              env: { HOME: home, PATH: `${bin}:${process.env.PATH ?? ""}` },
+              extendEnv: false,
+            },
+          ),
+        );
+      });
+      const result = yield* SshTunnel.launchOrReuseRemoteServer(target, undefined, {
+        nodeScriptPath: "/unused/server.ts",
+      }).pipe(
+        Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, remoteShell),
+        Effect.result,
+      );
+      assert.isTrue(Result.isFailure(result));
+      if (!Result.isFailure(result)) return;
+      assert.isTrue(isSshCommandError(result.failure));
+      if (!isSshCommandError(result.failure)) return;
+      assert.include(result.failure.stderr, "It wrote nothing to");
+      assert.notInclude(result.failure.stderr, "EARLIER_LAUNCH");
+      assert.notInclude(result.failure.stderr, "EARLIER_PROCESS");
+    }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
+  );
+
   it("rejects archive versions that are not a single exact version segment", () => {
     for (const archiveVersion of [
       "../other",
@@ -229,6 +360,8 @@ describe("ssh tunnel scripts", () => {
       "1.2.3-preview.1 x",
       "1.2.3-preview.1\nrm -rf /",
       "v1.2.3",
+      "1.2.3",
+      "1.2.3-preview.20260911.4",
     ]) {
       assert.throws(
         () => SshTunnel.buildRemoteT3RunnerScript({ archiveVersion }),
@@ -237,10 +370,7 @@ describe("ssh tunnel scripts", () => {
         archiveVersion,
       );
     }
-    assert.include(
-      SshTunnel.buildRemoteT3RunnerScript(ARCHIVE),
-      "T3_ARCHIVE_VERSION='1.2.3-preview.20260911.4'",
-    );
+    assert.include(SshTunnel.buildRemoteT3RunnerScript(ARCHIVE), "T3_ARCHIVE_VERSION='1.2.3-u4.8'");
   });
 
   it.each([
@@ -275,10 +405,11 @@ describe("ssh tunnel scripts", () => {
           assert.include(result.stderr, "download attempt");
           // A bare curl error does not tell the user that t3 itself could not be downloaded.
           assert.include(result.stderr, ARCHIVE.archiveVersion);
-          assert.include(result.stderr, "https://github.com/pingdotgg/t3code/releases/download");
+          assert.include(result.stderr, "configured U4 release source");
+          assert.notInclude(result.stderr, "github.com/pingdotgg");
         } else {
           assert.notInclude(result.stderr, "download attempt");
-          assert.include(result.stderr, "has no t3 release archive.");
+          assert.include(result.stderr, "has no U4 release archive.");
         }
       } finally {
         NodeFS.rmSync(root, { recursive: true, force: true });
@@ -286,14 +417,20 @@ describe("ssh tunnel scripts", () => {
     },
   );
 
-  it("names gzip when a host with tar but no gzip cannot unpack the release archive", () => {
+  // sha256sum and shasum escape a newline in a file name they print, so the home path has one.
+  const checksumTools =
+    NodeChildProcess.spawnSync("sh", ["-c", 'command -v "$1"', "sh", "shasum"]).status === 0
+      ? ["sha256sum", "shasum"]
+      : ["sha256sum"];
+  it.each(checksumTools)("names missing gzip after verifying with %s", (checksum) => {
     const root = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3-ssh-runner-"));
     try {
       const bin = NodePath.join(root, "bin");
       const release = NodePath.join(root, "release");
+      const home = NodePath.join(root, "home\ncache");
       const archive = `t3-${ARCHIVE.archiveVersion}-linux-x64.tar.gz`;
       NodeFS.mkdirSync(bin);
-      NodeFS.mkdirSync(NodePath.join(root, "home"));
+      NodeFS.mkdirSync(home);
       NodeFS.mkdirSync(NodePath.join(release, "t3"), { recursive: true });
       NodeFS.writeFileSync(NodePath.join(release, "t3", "t3"), "#!/bin/sh\necho ok\n", {
         mode: 0o755,
@@ -310,7 +447,7 @@ describe("ssh tunnel scripts", () => {
         "rm",
         "grep",
         "cut",
-        "sha256sum",
+        checksum,
         "tar",
         "mv",
       ]) {
@@ -335,7 +472,7 @@ describe("ssh tunnel scripts", () => {
       NodeFS.writeFileSync(runner, SshTunnel.buildRemoteT3RunnerScript(ARCHIVE));
       const result = NodeChildProcess.spawnSync(NodePath.join(bin, "sh"), [runner, "--version"], {
         encoding: "utf8",
-        env: { HOME: NodePath.join(root, "home"), PATH: bin },
+        env: { HOME: home, PATH: bin },
       });
       assert.notEqual(result.status, 0);
       assert.match(result.stderr, /(missing|needs) gzip/);
@@ -1059,7 +1196,7 @@ describe("ssh tunnel scripts", () => {
         const serverScript = path.join(home, "fake-t3.cjs");
         yield* fs.writeFileString(serverScript, fakeT3Serve(publishDelayMs));
         // A launch that died holding the lock must not block or double-admit later ones.
-        const launchLock = path.join(home, ".t3", "ssh-launch", ".launch.lock");
+        const launchLock = path.join(home, ".u4", "ssh-launch", ".launch.lock");
         yield* fs.makeDirectory(path.dirname(launchLock), { recursive: true });
         yield* fs.writeFileString(launchLock, "999999999\n");
         const targets = [
@@ -1077,7 +1214,7 @@ describe("ssh tunnel scripts", () => {
         ).pipe(Effect.provide(localRemoteShellLayer(home)));
 
         const ownerPid = Number(
-          yield* fs.readFileString(path.join(home, ".t3", "userdata", "server.lock")),
+          yield* fs.readFileString(path.join(home, ".u4", "userdata", "server.lock")),
         );
         assert.sameMembers(
           launches.map((launch) => launch.remoteServerKind),
@@ -1091,7 +1228,7 @@ describe("ssh tunnel scripts", () => {
           if (launch.remoteServerKind !== "managed") continue;
           const stateKey = yield* remoteStateKey(targets[index]!);
           const recordedPid = yield* fs.readFileString(
-            path.join(home, ".t3", "ssh-launch", stateKey, "pid"),
+            path.join(home, ".u4", "ssh-launch", stateKey, "pid"),
           );
           assert.equal(
             Number(recordedPid.trim()),
@@ -1157,7 +1294,7 @@ server.listen(Number(flag("--port") ?? 0), "127.0.0.1", () => {
         const remoteArgs =
           stateKey === undefined
             ? command.args.slice(command.args.indexOf("--") + 2)
-            : ["sh", "-s", "--", stateKey];
+            : ["sh", "-s", "--", ...stateKey.split(" ")];
         return realSpawner.spawn(
           ChildProcess.make("setsid", ["-w", ...remoteArgs], {
             ...command.options,
@@ -1186,7 +1323,7 @@ server.listen(Number(flag("--port") ?? 0), "127.0.0.1", () => {
         holderPort,
         sshAsLocalShell,
         staleId: staleId === "an unrelated process" ? holder.pid : tid,
-        stateDir: `${home}/.t3/ssh-launch/${yield* remoteStateKey(target)}`,
+        stateDir: `${home}/.u4/ssh-launch/${yield* remoteStateKey(target)}`,
       };
     });
 
@@ -1220,7 +1357,7 @@ server.listen(Number(flag("--port") ?? 0), "127.0.0.1", () => {
       // Reboot: our server is gone and its recorded PID now names something that
       // answers on the recorded port.
       process.kill(firstPid, "SIGKILL");
-      yield* fs.remove(`${home}/.t3/userdata/server-runtime.json`);
+      yield* fs.remove(`${home}/.u4/userdata/server-runtime.json`);
       yield* fs.writeFileString(`${stateDir}/pid`, `${staleId}\n`);
       yield* fs.writeFileString(`${stateDir}/port`, `${holderPort}\n`);
 
@@ -1233,6 +1370,88 @@ server.listen(Number(flag("--port") ?? 0), "127.0.0.1", () => {
         `the launcher kept ${kind} as its running server`,
       );
       assert.isTrue(yield* isRunning(pid));
+    }).pipe(Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
+  );
+
+  it.live("an update replaces the managed server after its connection is renamed", () =>
+    Effect.gen(function* () {
+      const { fs, home, fakeServer, sshAsLocalShell, stateDir } =
+        yield* prepare("an unrelated process");
+      const updatedServer = `${home}/fake-t3-next.cjs`;
+      yield* fs.writeFileString(updatedServer, FAKE_SERVER);
+      const renamed = { ...target, alias: "devbox-renamed" };
+      const launch = (
+        launchTarget: typeof renamed,
+        nodeScriptPath: string,
+        launcherId: string | null = "a".repeat(32),
+      ) =>
+        SshTunnel.launchOrReuseRemoteServer(
+          launchTarget,
+          undefined,
+          { nodeScriptPath },
+          launcherId,
+        ).pipe(Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, sshAsLocalShell));
+      const runtimePid = fs
+        .readFileString(`${home}/.u4/userdata/server-runtime.json`)
+        .pipe(Effect.map((runtime) => Number(JSON.parse(runtime).pid)));
+      const launchedPids: Array<number> = [];
+      yield* Effect.addFinalizer(() =>
+        Effect.forEach(launchedPids, (pid) =>
+          Effect.sync(() => {
+            try {
+              process.kill(pid, "SIGKILL");
+            } catch {}
+          }),
+        ),
+      );
+
+      assert.equal((yield* launch(target, fakeServer)).remoteServerKind, "managed");
+      const originalPid = yield* runtimePid;
+      launchedPids.push(originalPid);
+
+      // Another desktop on another version shares the server; it must not take it over.
+      const otherDesktop = yield* launch(
+        { ...target, alias: "devbox-other" },
+        updatedServer,
+        "b".repeat(32),
+      );
+      assert.equal(otherDesktop.remoteServerKind, "external");
+      assert.isTrue(yield* isRunning(originalPid), "another desktop replaced the server");
+
+      const afterRename = yield* launch(renamed, fakeServer);
+      assert.equal(yield* runtimePid, originalPid, "renaming alone restarted the server");
+      assert.equal(
+        yield* fs.readFileString(`${stateDir}/managed`),
+        "external\n",
+        "the old alias still owns the server, so its disconnect would stop it",
+      );
+      const afterUpdate = yield* launch(renamed, updatedServer);
+      launchedPids.push(yield* runtimePid);
+      assert.deepEqual(
+        [afterRename.remoteServerKind, afterUpdate.remoteServerKind],
+        ["managed", "managed"],
+      );
+      assert.isFalse(
+        yield* isRunning(originalPid),
+        "the update left the server launched under the old alias running",
+      );
+
+      // A rename and an update in one reconnect still replace the server.
+      const updatedPid = yield* runtimePid;
+      const renamedAndUpdated = yield* launch({ ...target, alias: "devbox-again" }, fakeServer);
+      launchedPids.push(yield* runtimePid);
+      assert.equal(renamedAndUpdated.remoteServerKind, "managed");
+      assert.isFalse(yield* isRunning(updatedPid), "a rename with an update kept the old server");
+
+      // A server that a launch without an ID started under a reused key is not this desktop's.
+      const again = { ...target, alias: "devbox-again" };
+      process.kill(yield* runtimePid, "SIGKILL");
+      assert.equal((yield* launch(again, fakeServer, null)).remoteServerKind, "managed");
+      const unownedPid = yield* runtimePid;
+      launchedPids.push(unownedPid);
+      const final = yield* launch({ ...target, alias: "devbox-final" }, updatedServer);
+      assert.equal(final.remoteServerKind, "external");
+      assert.isTrue(yield* isRunning(unownedPid), "a stale launcher ID claimed another's server");
     }).pipe(Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
 
@@ -1267,7 +1486,7 @@ server.listen(Number(flag("--port") ?? 0), "127.0.0.1", () => {
 describe("SSH launch during desktop update", () => {
   it.effect("archive launcher reuses the replacement without host Node", () =>
     Effect.gen(function* () {
-      const script = yield* captureLauncherFor({ archiveVersion: "1.2.3" });
+      const script = yield* captureLauncherFor({ archiveVersion: "1.2.3-u4.8" });
       const result = runLauncher(script, {
         archive: true,
         marker: { startedAt: 0, expiresAt: 60_000 },
@@ -1381,6 +1600,33 @@ describe("SSH launch during desktop update", () => {
       assert.isAtMost(result.now, 61_000);
       assert.isTrue(result.markerExists, "an expired marker is ignored, not deleted");
       assert.equal(result.events.filter((event) => event.startsWith("start ")).length, 1);
+    }),
+  );
+
+  it.effect.each([false, true])(
+    "waits for a boot service between two servers (archive: %s)",
+    (archive) =>
+      Effect.gen(function* () {
+        const script = yield* archive
+          ? captureLauncherFor({ archiveVersion: "1.2.3-u4.8" })
+          : captureLauncher;
+        const result = runLauncher(script, { archive, serviceServing: true, readyAt: 5_000 });
+        assert.deepEqual(result.output, { remotePort: 4888, serverKind: "external" });
+        assert.equal(result.now, 5_000);
+        assert.isFalse(result.events.some((event) => event.startsWith("start ")));
+      }),
+  );
+
+  it.effect("fails without starting a second server when the home's owner never answers", () =>
+    Effect.gen(function* () {
+      const result = runLauncher(yield* captureLauncher, {
+        serviceServing: true,
+        allowFailure: true,
+      });
+      assert.equal(result.status, 1);
+      assert.include(result.stderr, "no second server was started");
+      assert.equal(result.now, 60_000);
+      assert.isFalse(result.events.some((event) => event.startsWith("start ")));
     }),
   );
 

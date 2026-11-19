@@ -351,6 +351,13 @@ export function ServerUpdateAction({
 
   const manualCommand =
     selfUpdate === null ? manualServerUpdateCommand(targetVersion, installation) : null;
+  if (selfUpdate === null && manualCommand === null) {
+    return (
+      <span className="text-muted-foreground text-xs">
+        Install a verified U4 Code build on that machine to update this server.
+      </span>
+    );
+  }
   const actionLabel =
     manualCommand !== null
       ? updatesInstall

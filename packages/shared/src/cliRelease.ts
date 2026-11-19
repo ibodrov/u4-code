@@ -1,12 +1,14 @@
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
+import { PRODUCT_REPOSITORY_URL } from "./productIdentity.ts";
+
 import { compareSemverVersions } from "./semver.ts";
 
-const CLI_RELEASE_REPOSITORY = "pingdotgg/t3code";
-export const CLI_RELEASES_PAGE_URL = `https://github.com/${CLI_RELEASE_REPOSITORY}/releases`;
+const CLI_RELEASE_REPOSITORY = "ibodrov/u4-code";
+export const CLI_RELEASES_PAGE_URL = `${PRODUCT_REPOSITORY_URL}/releases`;
 export const CLI_RELEASE_CHECKSUMS_FILE = "SHA256SUMS";
-export const CLI_RELEASE_BASE_URL_ENV = "T3CODE_RELEASE_BASE_URL";
+export const CLI_RELEASE_BASE_URL_ENV = "U4CODE_RELEASE_BASE_URL";
 
 // Keep archive keys aligned with the Linux matrix, Windows ARM64 build, and cli_archive rows in release.yml,
 // and with the SSH runner's host check in packages/ssh/src/tunnel.ts.
@@ -42,13 +44,42 @@ export function cliArchiveFileName(version: string, platformKey: CliArchivePlatf
   return `t3-${version}-${platformKey}.${platformKey.startsWith("win32") ? "zip" : "tar.gz"}`;
 }
 
-const CLI_RELEASE_DEFAULT_BASE_URL = `https://github.com/${CLI_RELEASE_REPOSITORY}/releases/download`;
+export function isU4ReleaseVersion(version: string): boolean {
+  return /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)-u4\.(?:0|[1-9]\d*)(?:[.-][0-9A-Za-z-]+)*$/.test(
+    version,
+  );
+}
 
-export function cliReleaseDownloadBaseUrl(
-  version: string,
-  baseUrl: string | undefined = CLI_RELEASE_DEFAULT_BASE_URL,
-): string {
-  return `${(baseUrl?.trim() || CLI_RELEASE_DEFAULT_BASE_URL).replace(/\/+$/, "")}/v${version}`;
+/** A policy source wins even when invalid; never fall back to another source. */
+export function resolveU4ReleaseBaseUrl(
+  policySource?: string,
+  environmentSource?: string,
+): string | undefined {
+  const source = (policySource ?? environmentSource)?.trim();
+  if (!source) return undefined;
+  try {
+    const url = new URL(source);
+    if (url.protocol !== "https:" && url.protocol !== "http:") return undefined;
+    const host = url.hostname.toLowerCase();
+    if (
+      host === "t3.codes" ||
+      host.endsWith(".t3.codes") ||
+      host === "registry.npmjs.org" ||
+      ((host === "github.com" || host === "api.github.com") &&
+        /\/pingdotgg\/t3code(?:\/|$)/i.test(url.pathname))
+    )
+      return undefined;
+    return url.toString();
+  } catch {
+    return undefined;
+  }
+}
+
+export function cliReleaseDownloadBaseUrl(version: string, baseUrl?: string): string | undefined {
+  const source = resolveU4ReleaseBaseUrl(baseUrl);
+  return source === undefined || !isU4ReleaseVersion(version)
+    ? undefined
+    : releaseAssetUrl(source, version);
 }
 
 /** `segments` added to `baseUrl`'s path, keeping its query, such as a signed mirror URL's token. */
@@ -58,13 +89,14 @@ export function releaseAssetUrl(baseUrl: string, ...segments: ReadonlyArray<stri
   return url.toString();
 }
 
-/** A file of release `version`, from `baseUrl` laid out as GitHub's release downloads. */
+/** The configured source is the directory containing version directories, such as `/releases/`. */
 export function cliReleaseAssetUrl(
   version: string,
   fileName: string,
-  baseUrl: string | undefined = CLI_RELEASE_DEFAULT_BASE_URL,
-): string {
-  return releaseAssetUrl(baseUrl?.trim() || CLI_RELEASE_DEFAULT_BASE_URL, `v${version}`, fileName);
+  baseUrl?: string,
+): string | undefined {
+  const versionUrl = cliReleaseDownloadBaseUrl(version, baseUrl);
+  return versionUrl === undefined ? undefined : releaseAssetUrl(versionUrl, fileName);
 }
 
 export function parseChecksums(text: string): ReadonlyMap<string, string> {
@@ -147,7 +179,7 @@ export function newestCliReleaseVersion(
   for (const release of releases) {
     if (release.draft) continue;
     const version = /^v(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)$/.exec(release.tag_name)?.[1];
-    if (version === undefined) continue;
+    if (version === undefined || !isU4ReleaseVersion(version)) continue;
     if (cliReleaseChannelOf(version) === channel) return version;
   }
   return undefined;

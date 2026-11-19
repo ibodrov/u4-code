@@ -51,6 +51,7 @@ import {
 import { loadRepoEnv } from "./lib/public-config.ts";
 import { selectDesktopRuntimeExternalDependencies } from "./lib/desktop-external-packages.ts";
 import { resolveCatalogDependencies } from "./lib/resolve-catalog.ts";
+import { resolveTaggedSourceVersion } from "./lib/tagged-source-version.ts";
 
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
 import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -1021,6 +1022,12 @@ export const LINUX_FILE_EXCLUSIONS = [
   ...MAC_FILE_EXCLUSIONS,
   "!**/node_modules/node-pty/prebuilds/darwin-*/**/*",
 ] as const;
+
+function resolveLinuxFileExclusions(arch?: typeof BuildArch.Type) {
+  if (arch === undefined || arch === "universal") return [...LINUX_FILE_EXCLUSIONS];
+  const unusedArch = arch === "arm64" ? "x64" : "arm64";
+  return [...LINUX_FILE_EXCLUSIONS, `!**/node_modules/node-pty/prebuilds/linux-${unusedArch}/**/*`];
+}
 
 // Native packages (node-pty, objc-js) ship prebuilds for both Darwin architectures; only universal
 // apps need both. macOS 27 warns that an arm64 app holding x64-only code won't open on macOS 28.
@@ -2219,6 +2226,13 @@ export const copyDirectoryPreservingSymlinks = Effect.fn("copyDirectoryPreservin
 
 export const verifyPackagedBundleIsSelfContained = Effect.fn("verifyPackagedBundleIsSelfContained")(
   function* (input: { readonly asarPath: string; readonly verbose: boolean }) {
+    // A PR preview's bundle is untrusted and this job may hold signing secrets, so never run it.
+    if (yield* Config.Boolean("T3CODE_DESKTOP_UNTRUSTED_BUNDLE").pipe(Config.withDefault(false))) {
+      yield* Effect.log(
+        "[desktop-artifact] Skipped the bundle self-check for an untrusted bundle.",
+      );
+      return;
+    }
     const fs = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
 
@@ -2787,7 +2801,7 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
       ...(platform === "mac"
         ? resolveMacFileExclusions(arch)
         : platform === "linux"
-          ? LINUX_FILE_EXCLUSIONS
+          ? resolveLinuxFileExclusions(arch)
           : []),
     ],
     directories: {
@@ -2859,8 +2873,8 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
       },
       protocols: [
         {
-          name: "T3 Code",
-          schemes: ["t3code", "t3code-dev"],
+          name: PRODUCT_BASE_NAME,
+          schemes: [PRODUCT_URL_SCHEME, PRODUCT_DEV_URL_SCHEME],
         },
         {
           name: "Web site URL",
@@ -2924,6 +2938,13 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
         },
       },
     };
+    // electron-updater replaces an installed AppImage in place only when its name has no x.y.z version.
+    if (buildConfig.publish) {
+      buildConfig.appImage = {
+        artifactName:
+          updateChannel === "nightly" ? "T3-Code-Nightly-${arch}.${ext}" : "T3-Code-${arch}.${ext}",
+      };
+    }
     buildConfig.deb = {
       // FPM runs outside the staged app directory, so source paths must be absolute.
       fpm: [
@@ -3677,7 +3698,8 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
       }),
   });
 
-  const appVersion = options.version ?? serverPackageJson.version;
+  const appVersion =
+    options.version ?? resolveTaggedSourceVersion(repoRoot, serverPackageJson.version);
   const iconAssets = resolveDesktopBuildIconAssets();
   const commitHash = yield* resolveGitCommitHash(repoRoot);
   const mkdir = options.keepStage ? fs.makeTempDirectory : fs.makeTempDirectoryScoped;
@@ -3777,6 +3799,7 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
 
   yield* Effect.log("[desktop-artifact] Staging release app...");
   yield* fs.copy(distDirs.desktopDist, path.join(stageAppDir, "apps/desktop/dist-electron"));
+  yield* fs.copyFile(path.join(repoRoot, "LICENSE"), path.join(stageAppDir, "LICENSE"));
   yield* fs.copy(distDirs.desktopResources, stageResourcesDir);
   if (options.platform === "linux") {
     const extensionDir = path.join(stageAppDir, "apps/desktop/gnome-extension");

@@ -56,76 +56,37 @@ describe("environment maintenance access", () => {
 
 describe("environment release checks", () => {
   const signal = new AbortController().signal;
-  const feed = (...tags: ReadonlyArray<string>) =>
-    new Response(
-      `<feed><id>tag:github.com,2008:https://github.com/pingdotgg/t3code/releases</id>${tags
-        .map((tag) => `<entry><id>tag:github.com,2008:Repository/1/${tag}</id></entry>`)
-        .join("")}</feed>`,
-    );
 
-  it("keeps nightly and preview hosts on their channel without using the anonymous API quota", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (url: string) =>
-        url === "https://github.com/pingdotgg/t3code/releases.atom"
-          ? feed(
-              "desktop-preview",
-              "v1.0.0-preview.20260924.3",
-              "v1.0.0-nightly.20260924.2",
-              "v1.0.0",
-              "v1.0.0-nightly.20260923.1",
-            )
-          : new Response(null, { status: 403 }),
-      ),
-    );
-    expect(await findEnvironmentUpdate("1.0.0-nightly.20260923.1", signal)).toBe(
-      "1.0.0-nightly.20260924.2",
-    );
-    expect(await findEnvironmentUpdate("1.0.0-nightly.20260924.2", signal)).toBeNull();
-    expect(await findEnvironmentUpdate("1.0.0-preview.20260923.1", signal)).toBe(
-      "1.0.0-preview.20260924.3",
-    );
-    expect(await findEnvironmentUpdate("1.0.0-preview.20260925.1", signal)).toBeNull();
+  it("checks U4 releases and ignores official versions in the release index", async () => {
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(Response.json({ tag_name: "v99.0.0" }))
+      .mockResolvedValueOnce(Response.json([{ tag_name: "v0.1.10-u4.9" }]))
+      .mockResolvedValueOnce(Response.json({ tag_name: "v0.1.10-u4.9" }));
+    vi.stubGlobal("fetch", fetch);
+    expect(await findEnvironmentUpdate("0.1.10-u4.8", signal)).toBe("0.1.10-u4.9");
+    expect(await findEnvironmentUpdate("0.1.10-u4.9", signal)).toBeNull();
+    expect(fetch.mock.calls.map(([url]) => url)).toEqual([
+      "https://github.com/ibodrov/u4-code/releases/latest",
+      "https://api.github.com/repos/ibodrov/u4-code/releases?per_page=100&page=1",
+      "https://github.com/ibodrov/u4-code/releases/latest",
+    ]);
   });
 
-  it("finds a published preview beyond the ten-entry feed and first API page", async () => {
-    const nightlies = Array.from({ length: 10 }, (_, i) => `v1.0.0-nightly.20260930.${i}`);
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (url: string) => {
-        if (url === "https://github.com/pingdotgg/t3code/releases.atom") return feed(...nightlies);
-        if (url === "https://api.github.com/repos/pingdotgg/t3code/releases?per_page=100&page=1") {
-          return Response.json(Array.from({ length: 100 }, () => ({ tag_name: "v2.0.0" })));
-        }
-        if (url === "https://api.github.com/repos/pingdotgg/t3code/releases?per_page=100&page=2") {
-          return Response.json([
-            { tag_name: "v1.0.0-preview.20260925.1", draft: true },
-            { tag_name: "v1.0.0-preview.20260924.3" },
-          ]);
-        }
-        throw new Error(`Unexpected release request: ${url}`);
-      }),
-    );
-    expect(await findEnvironmentUpdate("1.0.0-preview.20260923.1", signal)).toBe(
-      "1.0.0-preview.20260924.3",
-    );
-  });
-
-  it("reports failed checks instead of claiming the server is current", async () => {
-    for (const status of [403, 429]) {
-      vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status })));
-      await expect(findEnvironmentUpdate("1.0.0", signal)).rejects.toThrow(String(status));
+  it("reports unavailable or invalid U4 releases and refuses non-U4 hosts before fetching", async () => {
+    const fetch = vi.fn();
+    vi.stubGlobal("fetch", fetch);
+    await expect(findEnvironmentUpdate("1.0.0", signal)).rejects.toThrow("Only exact U4");
+    expect(fetch).not.toHaveBeenCalled();
+    for (const status of [401, 403, 429]) {
+      fetch.mockResolvedValueOnce(new Response(null, { status }));
+      await expect(findEnvironmentUpdate("0.1.10-u4.8", signal)).rejects.toThrow(String(status));
     }
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (url: string) =>
-        url.endsWith(".atom") ? feed("v1.0.0") : Response.json([{ tag_name: "v1.0.0" }]),
-      ),
-    );
-    await expect(findEnvironmentUpdate("1.0.0-nightly.20260923.1", signal)).rejects.toThrow(
-      "No nightly release",
-    );
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ error: "invalid" })));
-    await expect(findEnvironmentUpdate("1.0.0", signal)).rejects.toThrow();
+    fetch.mockResolvedValueOnce(Response.json({ error: "invalid" }));
+    await expect(findEnvironmentUpdate("0.1.10-u4.8", signal)).rejects.toThrow();
+    fetch
+      .mockResolvedValueOnce(Response.json({ tag_name: "v1.0.0" }))
+      .mockResolvedValueOnce(Response.json([]));
+    await expect(findEnvironmentUpdate("0.1.10-u4.8", signal)).rejects.toThrow("No stable release");
   });
 });
