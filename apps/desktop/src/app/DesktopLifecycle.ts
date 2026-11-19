@@ -234,8 +234,13 @@ export const make = DesktopLifecycle.of({
       // Startup already acted on the app link that launched it; passing it on replays it.
       const appLinkPrefix = `${ElectronProtocol.getDesktopScheme(environment.isDevelopment)}:`;
       const args = yield* HostProcess.Arguments;
+      const executablePath = yield* HostProcess.ExecutablePath;
       yield* electronApp.relaunch({
-        execPath: yield* HostProcess.ExecutablePath,
+        // An AppImage's executable lives on a mount that unmounts when this process exits.
+        execPath:
+          environment.platform === "linux"
+            ? Option.getOrElse(environment.appImagePath, () => executablePath)
+            : executablePath,
         args: args.slice(1).filter((arg) => !arg.toLowerCase().startsWith(appLinkPrefix)),
       });
       yield* electronApp.exit(0);

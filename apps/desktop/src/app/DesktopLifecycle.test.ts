@@ -7,6 +7,7 @@ import * as Ref from "effect/Ref";
 import * as TestClock from "effect/testing/TestClock";
 
 import * as HostProcess from "@t3tools/shared/HostProcess";
+import { PRODUCT_URL_SCHEME } from "@t3tools/shared/productIdentity";
 
 import type * as Electron from "electron";
 
@@ -229,12 +230,27 @@ describe("DesktopLifecycle", () => {
     }),
   );
 
-  it.effect("relaunches without the app link that launched it", () =>
+  it.effect.each([
+    {
+      label: "installed executable",
+      executablePath: "/opt/U4 Code/u4code",
+      appImagePath: Option.none<string>(),
+      expectedExecPath: "/opt/U4 Code/u4code",
+    },
+    {
+      // The mount at process.execPath is gone once this process exits.
+      label: "AppImage",
+      executablePath: "/tmp/.mount_U4-CodA1b2C3/u4code",
+      appImagePath: Option.some("/home/user/Applications/U4-Code.AppImage"),
+      expectedExecPath: "/home/user/Applications/U4-Code.AppImage",
+    },
+  ])("relaunches the $label without the app link that launched it", (launch) =>
     Effect.gen(function* () {
       const relaunched = yield* Deferred.make<Electron.RelaunchOptions>();
       const layerEnvironment = Layer.succeed(DesktopEnvironment.DesktopEnvironment, {
         platform: "linux",
         isDevelopment: false,
+        appImagePath: launch.appImagePath,
       } as DesktopEnvironment.DesktopEnvironment["Service"]);
       const layer = DesktopLifecycle.layer.pipe(
         Layer.provideMerge(
@@ -260,16 +276,16 @@ describe("DesktopLifecycle", () => {
         return yield* Deferred.await(relaunched);
       }).pipe(
         Effect.provide(layer),
-        Effect.provideService(HostProcess.ExecutablePath, "/opt/T3 Code/t3code"),
+        Effect.provideService(HostProcess.ExecutablePath, launch.executablePath),
         Effect.provideService(HostProcess.Arguments, [
-          "/opt/T3 Code/t3code",
+          launch.executablePath,
           "--no-sandbox",
-          "T3CODE://pair?token=spent",
-          "t3code://new?prompt=hello",
+          `${PRODUCT_URL_SCHEME.toUpperCase()}://pair?token=spent`,
+          `${PRODUCT_URL_SCHEME}://new?prompt=hello`,
         ]),
       );
 
-      assert.deepEqual(options, { execPath: "/opt/T3 Code/t3code", args: ["--no-sandbox"] });
+      assert.deepEqual(options, { execPath: launch.expectedExecPath, args: ["--no-sandbox"] });
     }),
   );
 
