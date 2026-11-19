@@ -2873,8 +2873,8 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
       },
       protocols: [
         {
-          name: "T3 Code",
-          schemes: ["t3code", "t3code-dev"],
+          name: PRODUCT_BASE_NAME,
+          schemes: [PRODUCT_URL_SCHEME, PRODUCT_DEV_URL_SCHEME],
         },
         {
           name: "Web site URL",

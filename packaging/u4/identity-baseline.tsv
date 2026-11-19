@@ -3,10 +3,8 @@ t3-app-id	.github/workflows/mobile-android-apk.yml	1
 t3-app-id	.github/workflows/release.yml	1
 t3-app-id	apps/desktop/gnome-extension/captureService.js	2
 t3-app-id	apps/desktop/resources/linux/com.t3tools.t3code.metainfo.xml	2
-t3-app-id	apps/desktop/scripts/electron-launcher.mjs	2
 t3-app-id	apps/desktop/src/snapShot/linuxCaptureSession.ts	1
 t3-app-id	apps/server/src/cloud/bootService.ts	1
-t3-app-id	apps/server/src/policy/policyTemplates.ts	4
 t3-app-id	apps/web/public/.well-known/apple-app-site-association.json	3
 t3-app-id	apps/web/public/.well-known/assetlinks.json	3
 t3-app-id	apps/web/src/components/settings/MobileAppSettingsRow.tsx	1
@@ -14,7 +12,6 @@ t3-app-id	native/kde-snap-shot/src/feedback.qml	4
 t3-app-id	native/kde-snap-shot/src/feedback.rs	3
 t3-app-id	native/kde-snap-shot/src/main.rs	2
 t3-app-id	native/kde-snap-shot/src/transport_tests.rs	1
-t3-app-id	packages/shared/src/managedPolicyFile.ts	1
 t3-app-id	packaging/aur/t3code-bin/PKGBUILD	1
 t3-app-id	packaging/aur/t3code-nightly-bin/PKGBUILD	1
 t3-app-id	scripts/build-desktop-artifact.ts	1
@@ -42,8 +39,6 @@ t3-name	.github/workflows/release.yml	2
 t3-name	apps/desktop/gnome-extension/captureFeedback.js	1
 t3-name	apps/desktop/gnome-extension/captureService.js	1
 t3-name	apps/desktop/gnome-extension/metadata.json	2
-t3-name	apps/desktop/resources/dmg/dmg-background-latest.svg	1
-t3-name	apps/desktop/resources/dmg/dmg-background-nightly.svg	1
 t3-name	apps/desktop/resources/installer.nsh	4
 t3-name	apps/desktop/resources/linux/com.t3tools.t3code.metainfo.xml	2
 t3-name	apps/desktop/src/app/DesktopCliCommand.ts	2
@@ -51,7 +46,6 @@ t3-name	apps/desktop/src/app/DesktopCliShim.ts	1
 t3-name	apps/desktop/src/app/DesktopLegacyLocalStorage.ts	1
 t3-name	apps/desktop/src/electron/ElectronShell.ts	1
 t3-name	apps/desktop/src/electron/WindowsForeground.ts	1
-t3-name	apps/desktop/src/permissions/MacPermissionHelper.ts	1
 t3-name	apps/desktop/src/preview/BrowserSession.ts	1
 t3-name	apps/desktop/src/snapShot/GnomeCaptureSetup.ts	2
 t3-name	apps/desktop/src/ssh/DesktopSshPasswordPrompts.ts	1
@@ -85,7 +79,7 @@ t3-name	apps/server/src/orchestration-v2/pullRequestWatch.ts	4
 t3-name	apps/server/src/peer/PeerLinks.ts	2
 t3-name	apps/server/src/peer/PeerMcpClient.ts	1
 t3-name	apps/server/src/policy/managedProviders.ts	1
-t3-name	apps/server/src/policy/policyTemplates.ts	14
+t3-name	apps/server/src/policy/policyTemplates.ts	11
 t3-name	apps/server/src/preview/PreviewBrowserHost.ts	1
 t3-name	apps/server/src/preview/ServerBrowserPage.ts	1
 t3-name	apps/server/src/project/ManagedProjectFolders.ts	1
@@ -182,7 +176,7 @@ t3-name	packages/ssh/src/auth.ts	4
 t3-name	packages/tailscale/src/tailscale.ts	1
 t3-name	packaging/aur/t3code-bin/PKGBUILD	1
 t3-name	packaging/aur/t3code-nightly-bin/PKGBUILD	1
-t3-name	scripts/build-desktop-artifact.ts	2
+t3-name	scripts/build-desktop-artifact.ts	1
 t3-name	scripts/build-npm-launcher.ts	1
 t3-name	scripts/dev-runner.ts	1
 t3-name	scripts/generate-release-notes.ts	1
@@ -224,7 +218,7 @@ t3-slug	apps/desktop/gnome-extension/metadata.json	1
 t3-slug	apps/desktop/resources/linux/com.t3tools.t3code.metainfo.xml	6
 t3-slug	apps/desktop/scripts/build-browser-secret.mjs	2
 t3-slug	apps/desktop/scripts/dev-electron.mjs	3
-t3-slug	apps/desktop/scripts/electron-launcher.mjs	5
+t3-slug	apps/desktop/scripts/electron-launcher.mjs	2
 t3-slug	apps/desktop/scripts/ensure-electron-runtime.mjs	2
 t3-slug	apps/desktop/scripts/verify-preload-bundle.mjs	1
 t3-slug	apps/desktop/src/app/DesktopAppIdentity.ts	2
@@ -258,7 +252,7 @@ t3-slug	apps/server/src/outboundHttp.ts	1
 t3-slug	apps/server/src/peer/PeerLinks.ts	1
 t3-slug	apps/server/src/peer/PeerMcpClient.ts	1
 t3-slug	apps/server/src/persistence/Sqlite.ts	1
-t3-slug	apps/server/src/policy/policyTemplates.ts	5
+t3-slug	apps/server/src/policy/policyTemplates.ts	1
 t3-slug	apps/server/src/provider/ModelManifest.ts	1
 t3-slug	apps/server/src/serviceLauncher.ts	9
 t3-slug	apps/server/src/terminal/Manager.ts	1
@@ -594,7 +588,6 @@ t3-slug	packages/provider-testing/src/replayWorkspace.ts	1
 t3-slug	packages/secret-provider-onepassword/src/server/driver.ts	1
 t3-slug	packages/shared/src/cliRelease.ts	3
 t3-slug	packages/shared/src/git.ts	1
-t3-slug	packages/shared/src/managedPolicyFile.ts	1
 t3-slug	packages/shared/src/paletteSearch.ts	4
 t3-slug	packages/shared/src/productIdentity.ts	1
 t3-slug	packages/shared/src/promptLinks.ts	1
@@ -615,7 +608,7 @@ t3-slug	packaging/aur/scripts/release.sh	6
 t3-slug	packaging/aur/t3code-bin/PKGBUILD	18
 t3-slug	packaging/aur/t3code-nightly-bin/PKGBUILD	18
 t3-slug	pnpm-workspace.yaml	1
-t3-slug	scripts/build-desktop-artifact.ts	12
+t3-slug	scripts/build-desktop-artifact.ts	11
 t3-slug	scripts/build-npm-launcher.ts	2
 t3-slug	scripts/check-changed-command.ts	1
 t3-slug	scripts/e2e.config.ts	1

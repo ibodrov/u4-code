@@ -20,6 +20,11 @@ import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import { fromYaml } from "@t3tools/shared/schemaYaml";
+import {
+  PRODUCT_APP_ID,
+  PRODUCT_DEV_URL_SCHEME,
+  PRODUCT_URL_SCHEME,
+} from "@t3tools/shared/productIdentity";
 
 import {
   buildDesktopBundles,
@@ -605,7 +610,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
     ),
   );
 
-  it.effect("declares Calendar access for hosted commands in macOS builds", () =>
+  it.effect("declares U4's identity, URL schemes and Calendar access in macOS builds", () =>
     Effect.gen(function* () {
       for (const version of ["0.1.0", "0.1.1-nightly.20261019.1"]) {
         for (const signed of [false, true]) {
@@ -618,7 +623,19 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
             undefined,
             undefined,
           );
-          const mac = config.mac as { extendInfo: Record<string, unknown> };
+          const mac = config.mac as {
+            extendInfo: Record<string, unknown>;
+            protocols: ReadonlyArray<{ schemes: ReadonlyArray<string> }>;
+          };
+          assert.equal(config.appId, PRODUCT_APP_ID);
+          // Official T3 Code owns t3code links; claiming them would steal its callbacks.
+          assert.deepStrictEqual(
+            mac.protocols.map((protocol) => protocol.schemes),
+            [
+              [PRODUCT_URL_SCHEME, PRODUCT_DEV_URL_SCHEME],
+              ["http", "https"],
+            ],
+          );
           for (const key of [
             "NSCalendarsUsageDescription",
             "NSCalendarsFullAccessUsageDescription",

@@ -165,6 +165,32 @@ describe("readManagedPolicy", () => {
     }),
   );
 
+  it.effect("ignores official T3 Code's macOS policy locations", () =>
+    Effect.gen(function* () {
+      const t3Profile = "/Library/Managed Preferences/com.t3tools.t3code.plist";
+      const t3File = "/Library/Application Support/T3Code/policy.json";
+      assert.notInclude([MACOS_MANAGED_PREFERENCES_PATH, managedPolicyPath("darwin")], t3Profile);
+      assert.notInclude([MACOS_MANAGED_PREFERENCES_PATH, managedPolicyPath("darwin")], t3File);
+      // Both T3 sources at once would refuse to start T3; U4 must not see either.
+      const t3 = { [t3Profile]: "<binary plist>", [t3File]: "not json" };
+      const plutil = { "/usr/bin/plutil": { stdout: policy, exitCode: 0 } };
+
+      assert.isUndefined(yield* read("darwin", t3, plutil));
+      assert.equal(
+        yield* read("darwin", { ...t3, [managedPolicyPath("darwin")]: policy }, plutil),
+        managedPolicyPath("darwin"),
+      );
+      assert.equal(
+        yield* read(
+          "darwin",
+          { ...t3, [MACOS_MANAGED_PREFERENCES_PATH]: "<binary plist>" },
+          plutil,
+        ),
+        MACOS_MANAGED_PREFERENCES_PATH,
+      );
+    }),
+  );
+
   it.effect(
     "reads a Policy value of JSON from the registry, and treats only an absent key as none",
     () =>

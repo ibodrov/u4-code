@@ -4,6 +4,12 @@ import * as NodeModule from "node:module";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import * as NodeURL from "node:url";
+import {
+  PRODUCT_APP_ID,
+  PRODUCT_BASE_NAME,
+  PRODUCT_DEV_APP_ID,
+  PRODUCT_DEV_URL_SCHEME,
+} from "@t3tools/shared/productIdentity";
 import { ensureElectronRuntime } from "./ensure-electron-runtime.mjs";
 
 const isDevelopment = Boolean(process.env.VITE_DEV_SERVER_URL);
@@ -13,11 +19,13 @@ const repoRoot = NodePath.resolve(desktopDir, "..", "..");
 const devBundleIdSuffix = NodePath.basename(repoRoot)
   .toLowerCase()
   .replaceAll(/[^a-z0-9]+/g, "");
-const APP_DISPLAY_NAME = isDevelopment ? "U4 Code (Dev)" : "U4 Code (Beta)";
+const APP_DISPLAY_NAME = `${PRODUCT_BASE_NAME} (${isDevelopment ? "Dev" : "Beta"})`;
+// The unpackaged production launcher has its own id and no URL scheme: Launch Services could
+// otherwise send installed-app links to a bare Electron that starts without the app entry.
 const APP_BUNDLE_ID = isDevelopment
-  ? `com.t3tools.t3code.dev.${devBundleIdSuffix || "local"}`
-  : "com.t3tools.t3code";
-const APP_PROTOCOL_SCHEMES = isDevelopment ? ["t3code-dev"] : ["t3code"];
+  ? `${PRODUCT_DEV_APP_ID}.${devBundleIdSuffix || "local"}`
+  : `${PRODUCT_APP_ID}.unpackaged`;
+const APP_PROTOCOL_SCHEMES = isDevelopment ? [PRODUCT_DEV_URL_SCHEME] : [];
 const LAUNCHER_VERSION = 20;
 const developmentMacIconPngPath = NodePath.join(
   repoRoot,
@@ -287,12 +295,13 @@ function patchMainBundleInfoPlist(appBundlePath, iconPath, executableName) {
   }
   // macOS 26 offers Messages/Mail codes in every text field unless opted out.
   setPlistJson(infoPlistPath, "NSAutoFillRequiresTextContentTypeForOneTimeCodeOnMac", true);
-  setPlistJson(infoPlistPath, "CFBundleURLTypes", [
-    {
-      CFBundleURLName: APP_BUNDLE_ID,
-      CFBundleURLSchemes: APP_PROTOCOL_SCHEMES,
-    },
-  ]);
+  setPlistJson(
+    infoPlistPath,
+    "CFBundleURLTypes",
+    APP_PROTOCOL_SCHEMES.length === 0
+      ? []
+      : [{ CFBundleURLName: APP_BUNDLE_ID, CFBundleURLSchemes: APP_PROTOCOL_SCHEMES }],
+  );
 
   const resourcesDir = NodePath.join(appBundlePath, "Contents", "Resources");
   NodeFS.copyFileSync(iconPath, NodePath.join(resourcesDir, "icon.icns"));
