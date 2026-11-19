@@ -16,16 +16,29 @@ const isDevelopment = Boolean(process.env.VITE_DEV_SERVER_URL);
 const __dirname = NodePath.dirname(NodeURL.fileURLToPath(import.meta.url));
 export const desktopDir = NodePath.resolve(__dirname, "..");
 const repoRoot = NodePath.resolve(desktopDir, "..", "..");
-const devBundleIdSuffix = NodePath.basename(repoRoot)
-  .toLowerCase()
-  .replaceAll(/[^a-z0-9]+/g, "");
-const APP_DISPLAY_NAME = `${PRODUCT_BASE_NAME} (${isDevelopment ? "Dev" : "Beta"})`;
-// The unpackaged production launcher has its own id and no URL scheme: Launch Services could
-// otherwise send installed-app links to a bare Electron that starts without the app entry.
-const APP_BUNDLE_ID = isDevelopment
-  ? `${PRODUCT_DEV_APP_ID}.${devBundleIdSuffix || "local"}`
-  : `${PRODUCT_APP_ID}.unpackaged`;
-const APP_PROTOCOL_SCHEMES = isDevelopment ? [PRODUCT_DEV_URL_SCHEME] : [];
+
+export function resolveMacLauncherIdentity(development, checkoutName) {
+  const suffix = checkoutName.toLowerCase().replaceAll(/[^a-z0-9]+/g, "");
+  return development
+    ? {
+        displayName: `${PRODUCT_BASE_NAME} (Dev)`,
+        bundleId: `${PRODUCT_DEV_APP_ID}.${suffix || "local"}`,
+        protocolSchemes: [PRODUCT_DEV_URL_SCHEME],
+      }
+    : // The unpackaged production launcher has its own id and no URL scheme: Launch Services
+      // could otherwise send installed-app links to a bare Electron that has no app entry.
+      {
+        displayName: `${PRODUCT_BASE_NAME} (Beta)`,
+        bundleId: `${PRODUCT_APP_ID}.unpackaged`,
+        protocolSchemes: [],
+      };
+}
+
+const {
+  displayName: APP_DISPLAY_NAME,
+  bundleId: APP_BUNDLE_ID,
+  protocolSchemes: APP_PROTOCOL_SCHEMES,
+} = resolveMacLauncherIdentity(isDevelopment, NodePath.basename(repoRoot));
 const LAUNCHER_VERSION = 20;
 const developmentMacIconPngPath = NodePath.join(
   repoRoot,
