@@ -49,10 +49,12 @@ import { SettingsRow } from "./settingsLayout";
 import { AddCodexAccountDialog } from "./AddCodexAccountDialog";
 import { getOnboardingProviderState } from "../../onboarding/providerReadiness.logic";
 import { getProviderSummary } from "./providerStatus";
+import { isElectron } from "../../env";
 import {
   settleAuthorizationPage,
   settleHandoffAuthorizationPage,
   settleProviderInstall,
+  signInReturnUrl,
 } from "./CodexSetupSection.logic";
 
 const noop = () => undefined;
@@ -312,10 +314,7 @@ function ManagedCodexSetup({
   const importProfile = useAtomCommand(serverEnvironment.chatGptImportProfile, options);
   const clientCallback = !handoff && prefersClientCallback(local);
   const remoteWeb = clientCallback && !window.desktopBridge;
-  const returnUrl = new URL(window.location.href);
-  if (returnUrl.pathname === "/welcome") returnUrl.hash = `agents:${environmentId}`;
-  if (returnUrl.pathname === "/settings/providers")
-    returnUrl.searchParams.set("instanceId", instanceId);
+  const returnUrl = signInReturnUrl(window.location.href, isElectron, environmentId, instanceId);
   const needsManualCallback = remoteWeb;
   const callbackHelpId = useId();
   const [callbackHelpOpen, setCallbackHelpOpen] = useState(false);
@@ -491,10 +490,7 @@ function ManagedCodexSetup({
     if (pendingRef.current) return;
     setTransferFailed(false);
     setRequestedMethodId(methodId);
-    const returnUrl = new URL(window.location.href);
-    if (returnUrl.pathname === "/welcome") returnUrl.hash = `agents:${environmentId}`;
-    if (returnUrl.pathname === "/settings/providers")
-      returnUrl.searchParams.set("instanceId", instanceId);
+    const returnUrl = signInReturnUrl(window.location.href, isElectron, environmentId, instanceId);
     const { clientCallback, remoteWeb, primaryAuthEnvironmentId } =
       readSignInRouting(environmentId);
     if (primaryAuthEnvironmentId) {

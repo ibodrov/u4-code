@@ -59,3 +59,21 @@ export function settleHandoffAuthorizationPage(
   if (state === null) return undefined;
   return state.phase === "finished" ? null : settleAuthorizationPage(state.state, null);
 }
+
+/**
+ * Where a sign-in returns to. Desktop routes live in the hash, and a desktop return keeps the
+ * route as it is: an added instanceId would remount the provider panel finishing the sign-in.
+ */
+export function signInReturnUrl(
+  href: string,
+  hashHistory: boolean,
+  environmentId: string,
+  instanceId: string,
+): URL {
+  const current = new URL(href);
+  const url = hashHistory ? new URL(current.hash.slice(1) || "/", current) : current;
+  if (url.pathname === "/welcome") url.hash = `agents:${environmentId}`;
+  if (url.pathname === "/settings/providers" && !hashHistory)
+    url.searchParams.set("instanceId", instanceId);
+  return url;
+}
