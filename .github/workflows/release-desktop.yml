@@ -244,6 +244,7 @@ jobs:
         run: |
           if [[ "$(uname -m)" == "arm64" ]] && ! /usr/bin/arch -x86_64 /usr/bin/true; then
             sudo /usr/sbin/softwareupdate --install-rosetta --agree-to-license
+            /usr/bin/arch -x86_64 /usr/bin/true
           fi
 
       - name: Setup Rust
