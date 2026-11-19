@@ -7,6 +7,8 @@ import * as Scope from "effect/Scope";
 
 import * as Electron from "electron";
 
+import * as LinuxRelaunch from "./LinuxRelaunch.ts";
+
 export interface ElectronAppMetadata {
   readonly appVersion: string;
   readonly appPath: string;
@@ -52,6 +54,11 @@ export class ElectronApp extends Context.Service<
     readonly quit: Effect.Effect<void>;
     readonly exit: (code: number) => Effect.Effect<void>;
     readonly relaunch: (options: Electron.RelaunchOptions) => Effect.Effect<void>;
+    /** Linux only: starts the command from a helper once this process exits; false if it could not start. */
+    readonly relaunchAfterExit: (options: {
+      readonly execPath: string;
+      readonly args: ReadonlyArray<string>;
+    }) => Effect.Effect<boolean>;
     readonly setPath: (
       name: Parameters<Electron.App["setPath"]>[0],
       path: string,
@@ -177,6 +184,9 @@ export const make = ElectronApp.of({
     return Effect.sync(() => {
       Electron.app.relaunch(options);
     });
+  }),
+  relaunchAfterExit: Effect.fn("ElectronApp.relaunchAfterExit")(function (options) {
+    return Effect.sync(() => LinuxRelaunch.relaunchAfterExit(options));
   }),
   setPath: Effect.fn("ElectronApp.setPath")(function (name, path) {
     return Effect.sync(() => {
