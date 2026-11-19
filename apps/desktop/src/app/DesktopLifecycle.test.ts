@@ -275,10 +275,10 @@ describe("DesktopLifecycle", () => {
       expected: { via: "helper", execPath: "/home/user/Applications/U4-Code.AppImage" },
     },
     {
-      label: "an AppImage whose APPDIR repeats a separator",
+      label: "an AppImage whose APPDIR has redundant separators and dot components",
       executablePath: "/tmp/.mount_U4-CodA1b2C3/u4code",
       appImagePath: Option.some("/home/user/Applications/U4-Code.AppImage"),
-      appDir: "/tmp//.mount_U4-CodA1b2C3",
+      appDir: "/tmp/.//.mount_U4-CodA1b2C3/.",
       helperStarts: true,
       expected: { via: "helper", execPath: "/home/user/Applications/U4-Code.AppImage" },
     },
