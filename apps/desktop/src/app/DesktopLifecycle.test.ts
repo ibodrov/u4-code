@@ -25,6 +25,8 @@ function layerElectronApp(
   quit: Effect.Effect<void> = Effect.void,
   exit: (code: number) => Effect.Effect<void> = () => Effect.void,
   relaunch: (options: Electron.RelaunchOptions) => Effect.Effect<void> = () => Effect.void,
+  relaunchAfterExit: ElectronApp.ElectronApp["Service"]["relaunchAfterExit"] = () =>
+    Effect.succeed(false),
 ) {
   const registerListener = (eventName: string, listener: (...args: readonly unknown[]) => void) =>
     Effect.acquireRelease(
@@ -47,6 +49,7 @@ function layerElectronApp(
     quit,
     exit,
     relaunch,
+    relaunchAfterExit,
     setPath: () => Effect.void,
     setName: () => Effect.void,
     setAboutPanelOptions: () => Effect.void,
@@ -232,20 +235,44 @@ describe("DesktopLifecycle", () => {
 
   it.effect.each([
     {
-      label: "installed executable",
+      label: "an installed executable",
       executablePath: "/opt/U4 Code/u4code",
       appImagePath: Option.none<string>(),
-      expectedExecPath: "/opt/U4 Code/u4code",
+      appDir: undefined,
+      helperStarts: true,
+      expected: { via: "electron", execPath: "/opt/U4 Code/u4code" },
     },
     {
-      label: "AppImage",
+      label: "an AppImage through the helper",
       executablePath: "/tmp/.mount_U4-CodA1b2C3/u4code",
       appImagePath: Option.some("/home/user/Applications/U4-Code.AppImage"),
-      expectedExecPath: "/home/user/Applications/U4-Code.AppImage",
+      appDir: "/tmp/.mount_U4-CodA1b2C3",
+      helperStarts: true,
+      expected: { via: "helper", execPath: "/home/user/Applications/U4-Code.AppImage" },
     },
-  ])("relaunches the $label without the app link that launched it", (launch) =>
+    {
+      label: "an installed executable that inherited another AppImage's variables",
+      executablePath: "/opt/U4 Code/u4code",
+      appImagePath: Option.some("/home/user/Applications/Other.AppImage"),
+      appDir: "/tmp/.mount_OtherX9y8Z7",
+      helperStarts: true,
+      expected: { via: "electron", execPath: "/opt/U4 Code/u4code" },
+    },
+    {
+      label: "an AppImage whose helper cannot start",
+      executablePath: "/tmp/.mount_U4-CodA1b2C3/u4code",
+      appImagePath: Option.some("/home/user/Applications/U4-Code.AppImage"),
+      appDir: "/tmp/.mount_U4-CodA1b2C3",
+      helperStarts: false,
+      expected: { via: "electron", execPath: "/home/user/Applications/U4-Code.AppImage" },
+    },
+  ])("relaunches $label without the app link that launched it", (launch) =>
     Effect.gen(function* () {
-      const relaunched = yield* Deferred.make<Electron.RelaunchOptions>();
+      const relaunched = yield* Deferred.make<{
+        readonly via: string;
+        readonly execPath?: string;
+        readonly args?: ReadonlyArray<string>;
+      }>();
       const layerEnvironment = Layer.succeed(DesktopEnvironment.DesktopEnvironment, {
         platform: "linux",
         isDevelopment: false,
@@ -257,7 +284,12 @@ describe("DesktopLifecycle", () => {
             new Map(),
             Effect.void,
             () => Effect.void,
-            (options) => Deferred.succeed(relaunched, options).pipe(Effect.asVoid),
+            (options) =>
+              Deferred.succeed(relaunched, { via: "electron", ...options }).pipe(Effect.asVoid),
+            (options) =>
+              launch.helperStarts
+                ? Deferred.succeed(relaunched, { via: "helper", ...options }).pipe(Effect.as(true))
+                : Effect.succeed(false),
           ),
         ),
         Layer.provideMerge(layerElectronTheme),
@@ -268,7 +300,7 @@ describe("DesktopLifecycle", () => {
         Layer.provideMerge(DesktopState.layer),
       );
 
-      const options = yield* Effect.gen(function* () {
+      const relaunch = yield* Effect.gen(function* () {
         const lifecycle = yield* DesktopLifecycle.DesktopLifecycle;
         yield* (yield* DesktopShutdown.DesktopShutdown).markComplete;
         yield* lifecycle.relaunch("network access changed");
@@ -282,9 +314,13 @@ describe("DesktopLifecycle", () => {
           `${PRODUCT_URL_SCHEME.toUpperCase()}://pair?token=spent`,
           `${PRODUCT_URL_SCHEME}://new?prompt=hello`,
         ]),
+        Effect.provideService(
+          HostProcess.Environment,
+          launch.appDir === undefined ? {} : { APPDIR: launch.appDir },
+        ),
       );
 
-      assert.deepEqual(options, { execPath: launch.expectedExecPath, args: ["--no-sandbox"] });
+      assert.deepEqual(relaunch, { ...launch.expected, args: ["--no-sandbox"] });
     }),
   );
 

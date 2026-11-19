@@ -216,6 +216,17 @@ function quitFromSignal(
   );
 }
 
+// Anything an AppImage starts inherits APPIMAGE; it names this app only when it runs from that image's APPDIR.
+const runningAppImagePath = Effect.fn("desktop.lifecycle.runningAppImagePath")(function* (
+  appImagePath: Option.Option<string>,
+  executablePath: string,
+) {
+  const appDir = (yield* HostProcess.Environment).APPDIR;
+  return appDir !== undefined && executablePath.startsWith(`${appDir}/`)
+    ? appImagePath
+    : Option.none<string>();
+});
+
 /** @public */
 export const make = DesktopLifecycle.of({
   relaunch: Effect.fn("desktop.lifecycle.relaunch")(function* (reason) {
@@ -233,15 +244,25 @@ export const make = DesktopLifecycle.of({
       }
       // Startup already acted on the app link that launched it; passing it on replays it.
       const appLinkPrefix = `${ElectronProtocol.getDesktopScheme(environment.isDevelopment)}:`;
-      const args = yield* HostProcess.Arguments;
+      const args = (yield* HostProcess.Arguments)
+        .slice(1)
+        .filter((arg) => !arg.toLowerCase().startsWith(appLinkPrefix));
       const executablePath = yield* HostProcess.ExecutablePath;
+      const appImagePath =
+        environment.platform === "linux"
+          ? yield* runningAppImagePath(environment.appImagePath, executablePath)
+          : Option.none<string>();
+      if (Option.isSome(appImagePath)) {
+        if (yield* electronApp.relaunchAfterExit({ execPath: appImagePath.value, args })) {
+          yield* electronApp.exit(0);
+          return;
+        }
+        yield* logLifecycleError("relaunch helper did not start; using Electron's relauncher");
+      }
+      // An AppImage's mounted executable may disappear during the relaunch.
       yield* electronApp.relaunch({
-        // An AppImage's mounted executable may disappear during the relaunch.
-        execPath:
-          environment.platform === "linux"
-            ? Option.getOrElse(environment.appImagePath, () => executablePath)
-            : executablePath,
-        args: args.slice(1).filter((arg) => !arg.toLowerCase().startsWith(appLinkPrefix)),
+        execPath: Option.getOrElse(appImagePath, () => executablePath),
+        args: [...args],
       });
       yield* electronApp.exit(0);
     }).pipe(

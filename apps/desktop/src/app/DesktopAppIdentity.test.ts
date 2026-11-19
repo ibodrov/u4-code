@@ -48,6 +48,7 @@ const layerElectronApp = (calls: ElectronAppCalls) =>
     quit: Effect.void,
     exit: () => Effect.void,
     relaunch: () => Effect.void,
+    relaunchAfterExit: () => Effect.succeed(false),
     setPath: () => Effect.void,
     setName: (name) =>
       Effect.sync(() => {

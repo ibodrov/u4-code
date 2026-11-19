@@ -45,6 +45,7 @@ const layerElectronApp = Layer.succeed(ElectronApp.ElectronApp, {
   quit: Effect.void,
   exit: () => Effect.void,
   relaunch: () => Effect.void,
+  relaunchAfterExit: () => Effect.succeed(false),
   setPath: () => Effect.void,
   setName: () => Effect.void,
   setAboutPanelOptions: () => Effect.void,
