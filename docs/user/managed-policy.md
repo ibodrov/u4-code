@@ -280,8 +280,12 @@ U4 Code has its desktop updater disabled. The settings below apply to standalone
 - `mode`: `auto` allows explicit update requests. `off` blocks them for machines managed
   through device management.
 - `feedUrl`: sets the release source for `u4 update` and supported standalone service updates.
-  Use a U4 release mirror. Place the release's `t3-*` archives and `SHA256SUMS` under
-  `v<version>/`. The setting leaves desktop updates disabled.
+  For updates without an explicit version, put the platform's YAML file at the mirror root.
+  Use `latest-mac.yml` for macOS, `latest-linux.yml` for Linux x64, `latest-linux-arm64.yml` for
+  Linux ARM64, or `latest.yml` for Windows. Use the corresponding `nightly` filenames if the mirror
+  offers nightly builds. Each file must contain a `version` field with the exact U4 version.
+  Put the release's `t3-*` archives and `SHA256SUMS` under `<version>/`, for example
+  `0.1.10-u4.11/`. The setting leaves desktop updates disabled.
 - `allowNightly: false`: the nightly channel is unavailable.
 
 ## What a policy does not cover
