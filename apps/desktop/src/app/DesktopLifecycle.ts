@@ -236,7 +236,7 @@ export const make = DesktopLifecycle.of({
       const args = yield* HostProcess.Arguments;
       const executablePath = yield* HostProcess.ExecutablePath;
       yield* electronApp.relaunch({
-        // An AppImage's executable lives on a mount that unmounts when this process exits.
+        // An AppImage's mounted executable may disappear during the relaunch.
         execPath:
           environment.platform === "linux"
             ? Option.getOrElse(environment.appImagePath, () => executablePath)

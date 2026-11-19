@@ -238,7 +238,6 @@ describe("DesktopLifecycle", () => {
       expectedExecPath: "/opt/U4 Code/u4code",
     },
     {
-      // The mount at process.execPath is gone once this process exits.
       label: "AppImage",
       executablePath: "/tmp/.mount_U4-CodA1b2C3/u4code",
       appImagePath: Option.some("/home/user/Applications/U4-Code.AppImage"),
