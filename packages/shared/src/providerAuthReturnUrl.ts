@@ -34,3 +34,13 @@ export function providerAuthReturnUrl(value: string | undefined): string | undef
     return undefined;
   }
 }
+
+/** The in-app path of a desktop return address, or null for any other link. */
+export function providerAuthReturnAppPath(value: string): string | null {
+  const destination = providerAuthReturnUrl(value);
+  if (!destination) return null;
+  const url = new URL(destination);
+  return url.host === "app" && !["http:", "https:"].includes(url.protocol)
+    ? `${url.pathname}${url.search}${url.hash}`
+    : null;
+}

@@ -6,6 +6,7 @@ import {
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
 import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
 import { promptLinkAppPath } from "@t3tools/shared/promptLinks";
+import { providerAuthReturnAppPath } from "@t3tools/shared/providerAuthReturnUrl";
 import { readPairingAppLink, resolveRemotePairingTarget } from "@t3tools/shared/remote";
 import { useRouter } from "@tanstack/react-router";
 import * as Effect from "effect/Effect";
@@ -33,6 +34,7 @@ import { previewEnvironment } from "../../state/preview";
 import { allReachableShellsLiveAtom } from "../../state/shell";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { useAtomQueryRunner } from "../../state/use-atom-query-runner";
+import { exactScopeNavigation } from "../settings/settingsScopeNavigation";
 import { stackedThreadToast, toastManager } from "../ui/toast";
 
 /** A link handed over by the OS is a plain click: nothing about it asks for the browser. */
@@ -204,6 +206,11 @@ export function DesktopWebLinkCoordinator() {
     const pairingUrl = readPairingAppLink(url);
     if (pairingUrl !== null) {
       await pairFromLink(pairingUrl);
+      return;
+    }
+    const returnPath = providerAuthReturnAppPath(url);
+    if (returnPath !== null) {
+      await router.navigate(exactScopeNavigation(returnPath));
       return;
     }
     const appPath = promptLinkAppPath(url);

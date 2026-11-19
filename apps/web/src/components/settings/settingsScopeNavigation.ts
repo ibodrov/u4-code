@@ -1,4 +1,4 @@
-import type { SearchMiddleware } from "@tanstack/react-router";
+import { defaultParseSearch, type SearchMiddleware } from "@tanstack/react-router";
 
 import { validateSettingsScopeSearch, type SettingsScopeSearch } from "./settingsScope";
 
@@ -25,3 +25,16 @@ export const retainSettingsScope: SearchMiddleware<SettingsScopeSearch> = ({ sea
   );
   return { ...previousScope, ...result };
 };
+
+/** Navigates to an app path whose omitted scope means the default scope, not the current one. */
+export function exactScopeNavigation(appPath: string) {
+  const url = new URL(appPath, "app://app");
+  return {
+    to: url.pathname,
+    search: {
+      ...Object.fromEntries(SCOPE_KEYS.map((key) => [key, undefined])),
+      ...defaultParseSearch(url.search),
+    },
+    hash: url.hash.slice(1),
+  };
+}
